@@ -20,6 +20,7 @@ from railgame.render import (
     minutes_text,
 )
 from railgame.track import Point, Signal
+from railgame.ui import S, SR, best_scale, make_dpi_aware, set_scale
 
 SPEED_KEYS = {pygame.K_1: 1, pygame.K_2: 5, pygame.K_3: 10}
 DEFAULT_SPEED = 5
@@ -152,7 +153,7 @@ class Game:
     def button(self, rect: pygame.Rect, label: str, action: str, primary: bool = False) -> None:
         hovered = rect.collidepoint(pygame.mouse.get_pos())
         colour = BUTTON_ON if primary or hovered else BUTTON
-        pygame.draw.rect(self.screen, colour, rect, border_radius=8)
+        pygame.draw.rect(self.screen, colour, rect, border_radius=S(8))
         text = self.f_head.render(label, True, WHITE)
         self.screen.blit(text, text.get_rect(center=rect.center))
         self.buttons.append((rect, action))
@@ -161,34 +162,34 @@ class Game:
         s = self.screen
         s.fill(BG)
         title = self.f_title.render("CP Controller", True, WHITE)
-        s.blit(title, (80, 60))
+        s.blit(title, (S(80), S(60)))
         sub = self.f_text.render(
             "You control the signals and points of the Algarve line. Keep the trains moving, "
             "keep them apart, keep them on time.",
             True,
             MUTED,
         )
-        s.blit(sub, (80, 118))
+        s.blit(sub, (S(80), S(118)))
         y = 180
         for info in LEVELS:
             locked = info.number > self.unlocked
-            rect = pygame.Rect(80, y, 640, 86)
+            rect = SR(80, y, 640, 86)
             hovered = rect.collidepoint(pygame.mouse.get_pos()) and not locked
-            pygame.draw.rect(s, BUTTON if hovered else CARD, rect, border_radius=10)
+            pygame.draw.rect(s, BUTTON if hovered else CARD, rect, border_radius=S(10))
             colour = MUTED if locked else WHITE
-            s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, colour), (rect.x + 20, rect.y + 14))
+            s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, colour), (rect.x + S(20), rect.y + S(14)))
             detail = info.description if not locked else "Locked: pass the previous level first."
-            s.blit(self.f_text.render(detail, True, MUTED), (rect.x + 20, rect.y + 46))
+            s.blit(self.f_text.render(detail, True, MUTED), (rect.x + S(20), rect.y + S(46)))
             meta = self.f_small.render(
                 f"{len(info.trains)} trains · limit {info.max_average_delay_min:.0f} min", True, MUTED
             )
-            s.blit(meta, (rect.right - meta.get_width() - 20, rect.y + 18))
+            s.blit(meta, (rect.right - meta.get_width() - S(20), rect.y + S(18)))
             if not locked:
                 self.buttons.append((rect, f"level:{info.number}"))
             y += 100
 
         help_x = 780
-        s.blit(self.f_head.render("How it works", True, WHITE), (help_x, 180))
+        s.blit(self.f_head.render("How it works", True, WHITE), (S(help_x), S(180)))
         tips = [
             "The line has a single track. Trains in",
             "opposite directions can only pass each",
@@ -207,17 +208,17 @@ class Game:
             "Too much average delay = repeat the level.",
         ]
         for i, tip in enumerate(tips):
-            s.blit(self.f_text.render(tip, True, TEXT), (help_x, 220 + i * 24))
-        self.button(pygame.Rect(80, HEIGHT - 70, 120, 44), "Quit", "quit")
+            s.blit(self.f_text.render(tip, True, TEXT), (S(help_x), S(220 + i * 24)))
+        self.button(SR(80, HEIGHT - 70, 120, 44), "Quit", "quit")
 
     def draw_result(self) -> None:
         s = self.screen
-        shade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        shade = pygame.Surface(s.get_size(), pygame.SRCALPHA)
         shade.fill((0, 0, 0, 150))
         s.blit(shade, (0, 0))
-        box = pygame.Rect(0, 0, 560, 300)
-        box.center = (WIDTH // 2, HEIGHT // 2)
-        pygame.draw.rect(s, CARD, box, border_radius=14)
+        box = SR(0, 0, 560, 300)
+        box.center = (S(WIDTH // 2), S(HEIGHT // 2))
+        pygame.draw.rect(s, CARD, box, border_radius=S(14))
 
         sim = self.sim
         if sim.crash:
@@ -234,11 +235,11 @@ class Game:
                 f"{sim.max_average_delay / 60:.0f} min. Try again."
             )
         text = self.f_title.render(title, True, colour)
-        s.blit(text, text.get_rect(center=(box.centerx, box.y + 60)))
+        s.blit(text, text.get_rect(center=(box.centerx, box.y + S(60))))
         words, lines, current = detail.split(), [], ""
         for word in words:
             test = (current + " " + word).strip()
-            if self.f_text.size(test)[0] > box.width - 60:
+            if self.f_text.size(test)[0] > box.width - S(60):
                 lines.append(current)
                 current = word
             else:
@@ -246,21 +247,23 @@ class Game:
         lines.append(current)
         for i, line in enumerate(lines):
             t = self.f_text.render(line, True, TEXT)
-            s.blit(t, t.get_rect(center=(box.centerx, box.y + 120 + i * 24)))
+            s.blit(t, t.get_rect(center=(box.centerx, box.y + S(120 + i * 24))))
 
-        y = box.bottom - 70
+        y = box.bottom - S(70)
         if sim.passed and self.level_number < len(LEVELS):
-            self.button(pygame.Rect(box.x + 30, y, 150, 44), "Menu", "menu")
-            self.button(pygame.Rect(box.x + 200, y, 150, 44), "Replay", "retry")
-            self.button(pygame.Rect(box.x + 370, y, 160, 44), "Next level", "next", primary=True)
+            self.button(pygame.Rect(box.x + S(30), y, S(150), S(44)), "Menu", "menu")
+            self.button(pygame.Rect(box.x + S(200), y, S(150), S(44)), "Replay", "retry")
+            self.button(pygame.Rect(box.x + S(370), y, S(160), S(44)), "Next level", "next", primary=True)
         else:
-            self.button(pygame.Rect(box.x + 60, y, 200, 44), "Menu", "menu")
-            self.button(pygame.Rect(box.x + 300, y, 200, 44), "Try again", "retry", primary=True)
+            self.button(pygame.Rect(box.x + S(60), y, S(200), S(44)), "Menu", "menu")
+            self.button(pygame.Rect(box.x + S(300), y, S(200), S(44)), "Try again", "retry", primary=True)
 
 
 def main() -> None:
+    make_dpi_aware()
     pygame.init()
+    set_scale(best_scale())
     pygame.display.set_caption("CP Controller")
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    screen = pygame.display.set_mode((S(WIDTH), S(HEIGHT)))
     Game(screen).run()
     pygame.quit()

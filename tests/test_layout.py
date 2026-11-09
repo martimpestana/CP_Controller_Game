@@ -36,3 +36,23 @@ def test_game_draws_a_frame():
     game.sim.advance(600)
     game.draw()
     pygame.quit()
+
+
+def test_clicks_work_when_the_window_is_scaled():
+    from railgame import ui
+    from railgame.game import Game
+
+    pygame.init()
+    ui.set_scale(1.5)
+    try:
+        screen = pygame.display.set_mode((ui.S(1280), ui.S(720)))
+        game = Game(screen)
+        game.start_level(1)
+        signal = game.sim.line.signal("TAV-W0")
+        x, y = game.renderer.signal_position(signal)
+        assert x > 1000  # Tavira is at about x=760 in a 1280 px window
+        game.click((round(x), round(y)))
+        assert signal.green
+    finally:
+        ui.set_scale(1.0)
+        pygame.quit()
