@@ -35,8 +35,10 @@ def _lerp(a, b, t):
 
 
 class Layout:
-    def __init__(self, line: Line, rect: tuple[int, int, int, int]):
+    def __init__(self, line: Line, rect: tuple[int, int, int, int], scale: float = 1.0):
         self.line = line
+        self.zone_px = ZONE_PX * scale
+        self.track_gap = TRACK_GAP * scale
         left, top, width, height = rect
         raw = [(lon * math.cos(math.radians(37.07)), -lat) for lat, lon in ALGARVE_SHAPE]
         xs = [p[0] for p in raw]
@@ -59,8 +61,8 @@ class Layout:
             if st.has_loop:
                 d = self.cum[ALGARVE_STATION_SHAPE_INDEX[st.code]]
                 self.station_px[st.code] = d
-                anchors.append((st.pos - ZONE_HALF, d - ZONE_PX))
-                anchors.append((st.pos + ZONE_HALF, d + ZONE_PX))
+                anchors.append((st.pos - ZONE_HALF, d - self.zone_px))
+                anchors.append((st.pos + ZONE_HALF, d + self.zone_px))
         self.anchors = sorted(anchors)
 
     # ------------------------------------------------------------------ basic geometry
@@ -86,8 +88,8 @@ class Layout:
     def frame(self, st: Station):
         """Centre, direction along the track and direction 'north' for a station box."""
         d = self.station_px[st.code]
-        a = self._path_at(d - ZONE_PX)
-        b = self._path_at(d + ZONE_PX)
+        a = self._path_at(d - self.zone_px)
+        b = self._path_at(d + self.zone_px)
         length = math.dist(a, b)
         ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
         centre = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
@@ -95,7 +97,7 @@ class Layout:
 
     def local(self, st: Station, along_m: float, offset_px: float) -> tuple[float, float]:
         (cx, cy), (ux, uy), (nx, ny) = self.frame(st)
-        along = along_m * ZONE_PX / ZONE_HALF
+        along = along_m * self.zone_px / ZONE_HALF
         return (cx + ux * along + nx * offset_px, cy + uy * along + ny * offset_px)
 
     # ------------------------------------------------------------------ public helpers
@@ -107,7 +109,7 @@ class Layout:
             offset = 0.0
             if track == 2:
                 x = abs(pos - st.pos)
-                offset = TRACK_GAP * max(0.0, min(1.0, (POINT_OFFSET - x) / (POINT_OFFSET - LOOP_HALF)))
+                offset = self.track_gap * max(0.0, min(1.0, (POINT_OFFSET - x) / (POINT_OFFSET - LOOP_HALF)))
             return self.local(st, pos - st.pos, offset)
         return self._path_at(self._metres_to_px(pos))
 

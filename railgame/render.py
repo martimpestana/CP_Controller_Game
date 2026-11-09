@@ -4,10 +4,12 @@ import math
 
 import pygame
 
-from railgame.layout import TRACK_GAP, Layout
+from railgame import ui
+from railgame.layout import Layout
 from railgame.simulation import Simulation
 from railgame.track import EAST, Point, Signal
 from railgame.train import TRAIN_LENGTH, Train
+from railgame.ui import S, SR, font
 
 WIDTH, HEIGHT = 1280, 720
 TOP_BAR = 56
@@ -35,10 +37,6 @@ BUTTON_ON = (70, 120, 200)
 SIGNAL_SIDE = 14  # pixels between a signal and its track
 
 
-def font(size: int, bold: bool = False) -> pygame.font.Font:
-    return pygame.font.SysFont("segoeui,dejavusans,arial,helvetica", size, bold=bold)
-
-
 def clock_text(seconds: float, with_seconds: bool = False) -> str:
     seconds = int(seconds) % (24 * 3600)
     text = f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}"
@@ -56,7 +54,10 @@ def train_colour(train: Train) -> tuple[int, int, int]:
 class Renderer:
     def __init__(self, sim: Simulation):
         self.sim = sim
-        self.layout = Layout(sim.line, (40, TOP_BAR + 120, PANEL_X - 80, HEIGHT - TOP_BAR - 250))
+        self.layout = Layout(
+            sim.line, (S(40), S(TOP_BAR + 120), S(PANEL_X - 80), S(HEIGHT - TOP_BAR - 250)), ui.scale()
+        )
+        self.gap = self.layout.track_gap
         self.f_small = font(13)
         self.f_text = font(15)
         self.f_bold = font(15, bold=True)
@@ -70,14 +71,14 @@ class Renderer:
     def signal_position(self, signal: Signal) -> tuple[float, float]:
         x, y = self.layout.point(signal.pos, signal.track or 1)
         nx, ny = self.layout.normal(signal.pos)
-        side = SIGNAL_SIDE if signal.track == 2 else -SIGNAL_SIDE
+        side = S(SIGNAL_SIDE) if signal.track == 2 else -S(SIGNAL_SIDE)
         return (x + nx * side, y + ny * side)
 
     def point_position(self, point: Point) -> tuple[float, float]:
         return self.layout.point(point.pos)
 
     def object_at(self, pos: tuple[int, int]) -> Signal | Point | None:
-        best, best_dist = None, 13.0
+        best, best_dist = None, S(13)
         for s in self.sim.line.signals:
             dist = math.dist(pos, self.signal_position(s))
             if dist < best_dist:
@@ -99,9 +100,9 @@ class Renderer:
     def _prepare_background(self) -> None:
         line = self.sim.line
         lay = self.layout
-        surf = pygame.Surface((WIDTH, HEIGHT))
+        surf = pygame.Surface((S(WIDTH), S(HEIGHT)))
         surf.fill(BG)
-        pygame.draw.rect(surf, LAND, (0, TOP_BAR, PANEL_X, HEIGHT - TOP_BAR))
+        pygame.draw.rect(surf, LAND, SR(0, TOP_BAR, PANEL_X, HEIGHT - TOP_BAR))
 
         # The sea follows the shape of the line, a little to the south.
         coast = []
@@ -110,29 +111,29 @@ class Renderer:
         while pos <= line.east_edge + 3000:
             x, y = lay.point(pos)
             nx, ny = lay.normal(pos)
-            coast.append((x - nx * 45, y - ny * 45))
+            coast.append((x - nx * S(45), y - ny * S(45)))
             wave = 10 * math.sin(pos / 2500)
             if line.west_edge + 2000 <= pos <= line.east_edge - 3000:
-                island.append((x - nx * (90 + wave), y - ny * (90 + wave)))
+                island.append((x - nx * S(90 + wave), y - ny * S(90 + wave)))
             pos += 250
-        coast = [(0, coast[0][1] + 20)] + coast + [(PANEL_X, coast[-1][1] - 60)]
-        pygame.draw.polygon(surf, SEA, coast + [(PANEL_X, HEIGHT), (0, HEIGHT)])
-        pygame.draw.lines(surf, SAND, False, island, 5)
+        coast = [(0, coast[0][1] + S(20))] + coast + [(S(PANEL_X), coast[-1][1] - S(60))]
+        pygame.draw.polygon(surf, SEA, coast + [(S(PANEL_X), S(HEIGHT)), (0, S(HEIGHT))])
+        ui.thick_lines(surf, SAND, island, S(5))
         label = self.f_small.render("Atlantic Ocean", True, (90, 130, 150))
-        surf.blit(label, (PANEL_X // 2 - 40, HEIGHT - 40))
+        surf.blit(label, (S(PANEL_X // 2 - 40), S(HEIGHT - 40)))
 
         # Track
-        pygame.draw.lines(surf, TRACK, False, lay.main_track(), 4)
+        ui.thick_lines(surf, TRACK, lay.main_track(), S(4))
         for st in line.stations:
             if st.has_loop:
-                pygame.draw.lines(surf, TRACK, False, lay.loop_track(st), 4)
+                ui.thick_lines(surf, TRACK, lay.loop_track(st), S(4))
 
         # Where the line continues off the map
         west = lay.point(line.west_edge)
         east = lay.point(line.east_edge)
-        surf.blit(self.f_small.render("← Loulé", True, MUTED), (west[0], west[1] - 30))
+        surf.blit(self.f_small.render("← Loulé", True, MUTED), (west[0], west[1] - S(30)))
         text = self.f_small.render("V. R. S. António →", True, MUTED)
-        surf.blit(text, (east[0] - text.get_width(), east[1] - 30))
+        surf.blit(text, (east[0] - text.get_width(), east[1] - S(30)))
         self.background = surf
 
     # ------------------------------------------------------------------ drawing a frame
@@ -150,8 +151,8 @@ class Renderer:
         self._draw_hover(screen, hover)
         if toast:
             text = self.f_text.render(toast, True, WHITE)
-            box = text.get_rect(center=(PANEL_X // 2, TOP_BAR + 30)).inflate(24, 14)
-            pygame.draw.rect(screen, (90, 40, 40), box, border_radius=8)
+            box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 30))).inflate(S(24), S(14))
+            pygame.draw.rect(screen, (90, 40, 40), box, border_radius=S(8))
             screen.blit(text, text.get_rect(center=box.center))
 
     def _highlighted_targets(self, hover) -> dict[str, tuple[int, int, int]]:
@@ -162,8 +163,8 @@ class Renderer:
 
     def _pulse(self, screen, pos, colour) -> None:
         t = pygame.time.get_ticks() / 1000
-        radius = 13 + 4 * (0.5 + 0.5 * math.sin(t * 6))
-        pygame.draw.circle(screen, colour, (int(pos[0]), int(pos[1])), int(radius), 2)
+        radius = S(13 + 4 * (0.5 + 0.5 * math.sin(t * 6)))
+        ui.ring(screen, colour, pos, radius, S(2))
 
     def _draw_points(self, screen, highlighted) -> None:
         lay = self.layout
@@ -174,13 +175,13 @@ class Renderer:
             straight = [lay.point(p.pos), lay.point(inner, 1)]
             diverging = [lay.point(p.pos), lay.point(inner, 2)]
             active, other = (diverging, straight) if p.diverging else (straight, diverging)
-            pygame.draw.line(screen, TRACK_DIM, other[0], other[1], 4)
-            pygame.draw.line(screen, YELLOW if p.diverging else WHITE, active[0], active[1], 4)
+            ui.thick_line(screen, TRACK_DIM, other[0], other[1], S(4))
+            ui.thick_line(screen, YELLOW if p.diverging else WHITE, active[0], active[1], S(4))
             x, y = self.point_position(p)
-            rect = pygame.Rect(0, 0, 13, 13)
+            rect = pygame.Rect(0, 0, S(13), S(13))
             rect.center = (int(x), int(y))
-            pygame.draw.rect(screen, YELLOW if p.diverging else WHITE, rect, border_radius=2)
-            pygame.draw.rect(screen, BG, rect, 2, border_radius=2)
+            pygame.draw.rect(screen, YELLOW if p.diverging else WHITE, rect, border_radius=S(2))
+            pygame.draw.rect(screen, BG, rect, S(2), border_radius=S(2))
             if p.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[p.id])
 
@@ -188,9 +189,9 @@ class Renderer:
         for s in self.sim.line.signals:
             x, y = self.signal_position(s)
             base = self.layout.point(s.pos, s.track or 1)
-            pygame.draw.line(screen, MUTED, base, (x, y), 2)
-            pygame.draw.circle(screen, (8, 8, 8), (int(x), int(y)), 8)
-            pygame.draw.circle(screen, GREEN if s.green else RED, (int(x), int(y)), 6)
+            ui.thick_line(screen, MUTED, base, (x, y), S(2))
+            ui.circle(screen, (8, 8, 8), (x, y), S(8))
+            ui.circle(screen, GREEN if s.green else RED, (x, y), S(6))
             if s.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[s.id])
 
@@ -205,104 +206,104 @@ class Renderer:
             # Walk back from the front of the train until it is long enough to see (24 px).
             shape = [self.layout.point(train.pos, train.track)]
             drawn, metres = 0.0, 0.0
-            while (drawn < 24 or metres < TRAIN_LENGTH) and metres < 4000:
+            while (drawn < S(24) or metres < TRAIN_LENGTH) and metres < 4000:
                 metres += 10
                 nxt = self.layout.point(train.pos - train.direction * metres, train.track)
                 drawn += math.dist(shape[-1], nxt)
                 shape.append(nxt)
             head_xy, tail_xy = shape[0], shape[-1]
             colour = RED if train in crashed else train_colour(train)
-            pygame.draw.lines(screen, (0, 0, 0), False, shape, 14)
-            pygame.draw.lines(screen, colour, False, shape, 10)
-            pygame.draw.circle(screen, WHITE, (int(head_xy[0]), int(head_xy[1])), 3)
+            ui.thick_lines(screen, (0, 0, 0), shape, S(14))
+            ui.thick_lines(screen, colour, shape, S(10))
+            ui.circle(screen, WHITE, head_xy, S(3))
 
             nx, ny = self.layout.normal(train.pos)
-            offset = 32 + (TRACK_GAP if train.track == 2 else 0)
+            offset = S(32) + (self.gap if train.track == 2 else 0)
             mid = ((head_xy[0] + tail_xy[0]) / 2, (head_xy[1] + tail_xy[1]) / 2)
             lx, ly = mid[0] - nx * offset, mid[1] - ny * offset
             name = self.f_small.render(f"{train.name} {train.arrow}", True, WHITE)
             delay = train.delay(self.sim.time)
             tag_text = "on time" if delay < 30 else f"+{delay / 60:.0f} min"
             tag = self.f_small.render(tag_text, True, GREEN if delay < 30 else RED)
-            screen.blit(name, (lx - name.get_width() / 2, ly - 9))
-            screen.blit(tag, (lx - tag.get_width() / 2, ly + 6))
+            screen.blit(name, (lx - name.get_width() / 2, ly - S(9)))
+            screen.blit(tag, (lx - tag.get_width() / 2, ly + S(6)))
 
     def _draw_stations(self, screen) -> None:
         lay = self.layout
         for st in self.sim.line.stations:
             if st.has_loop:
-                x, y = lay.local(st, 0, TRACK_GAP / 2)
-                pygame.draw.circle(screen, BG, (int(x), int(y)), 15)
-                pygame.draw.circle(screen, WHITE, (int(x), int(y)), 12)
+                x, y = lay.local(st, 0, self.gap / 2)
+                ui.circle(screen, BG, (x, y), S(15))
+                ui.circle(screen, WHITE, (x, y), S(12))
                 label = self.f_bold.render(st.name, True, WHITE)
-                lx, ly = lay.local(st, 0, 52)
+                lx, ly = lay.local(st, 0, S(52))
             else:
                 x, y = lay.point(st.pos)
-                pygame.draw.circle(screen, BG, (int(x), int(y)), 9)
-                pygame.draw.circle(screen, WHITE, (int(x), int(y)), 6)
+                ui.circle(screen, BG, (x, y), S(9))
+                ui.circle(screen, WHITE, (x, y), S(6))
                 label = self.f_small.render(st.name, True, MUTED)
                 nx, ny = lay.normal(st.pos)
-                lx, ly = x + nx * 24, y + ny * 24
+                lx, ly = x + nx * S(24), y + ny * S(24)
             screen.blit(label, (lx - label.get_width() / 2, ly - label.get_height() / 2))
 
     def _draw_top_bar(self, screen, info, speed: int) -> None:
         sim = self.sim
-        pygame.draw.rect(screen, PANEL, (0, 0, WIDTH, TOP_BAR))
+        pygame.draw.rect(screen, PANEL, SR(0, 0, WIDTH, TOP_BAR))
         title = self.f_title.render(f"Level {info.number} · {info.title}", True, WHITE)
-        screen.blit(title, (18, 16))
+        screen.blit(title, (S(18), S(16)))
 
-        x = 330
-        screen.blit(self.f_title.render(clock_text(sim.time, True), True, WHITE), (x, 16))
-        x += 110
+        x = S(330)
+        screen.blit(self.f_title.render(clock_text(sim.time, True), True, WHITE), (x, S(16)))
+        x += S(110)
         self.speed_buttons = []
         for value, label in ((0, "Pause"), (1, "1x"), (5, "5x"), (10, "10x")):
             text = self.f_bold.render(label, True, WHITE)
-            rect = pygame.Rect(x, 13, text.get_width() + 20, 30)
-            pygame.draw.rect(screen, BUTTON_ON if speed == value else BUTTON, rect, border_radius=6)
+            rect = pygame.Rect(x, S(13), text.get_width() + S(20), S(30))
+            pygame.draw.rect(screen, BUTTON_ON if speed == value else BUTTON, rect, border_radius=S(6))
             screen.blit(text, text.get_rect(center=rect.center))
             self.speed_buttons.append((rect, value))
-            x = rect.right + 6
+            x = rect.right + S(6)
 
-        x += 24
+        x += S(24)
         average = sim.average_delay()
         limit = sim.max_average_delay
         colour = GREEN if average < limit * 0.5 else YELLOW if average <= limit else RED
         text = self.f_bold.render(f"Average delay {minutes_text(average)}", True, colour)
-        screen.blit(text, (x, 19))
-        x += text.get_width() + 14
-        screen.blit(self.f_text.render(f"(limit {limit / 60:.0f} min)", True, MUTED), (x, 19))
+        screen.blit(text, (x, S(19)))
+        x += text.get_width() + S(14)
+        screen.blit(self.f_text.render(f"(limit {limit / 60:.0f} min)", True, MUTED), (x, S(19)))
         done = sum(1 for t in sim.trains if t.state == "finished")
         text = self.f_text.render(f"Trains done {done}/{len(sim.trains)}", True, MUTED)
-        screen.blit(text, (WIDTH - text.get_width() - 18, 19))
+        screen.blit(text, (S(WIDTH - 18) - text.get_width(), S(19)))
 
     def _draw_requests(self, screen, hover) -> None:
-        pygame.draw.rect(screen, PANEL, (PANEL_X, TOP_BAR, WIDTH - PANEL_X, HEIGHT - TOP_BAR))
-        screen.blit(self.f_title.render("Drivers' requests", True, WHITE), (PANEL_X + 18, TOP_BAR + 14))
+        pygame.draw.rect(screen, PANEL, SR(PANEL_X, TOP_BAR, WIDTH - PANEL_X, HEIGHT - TOP_BAR))
+        screen.blit(self.f_title.render("Drivers' requests", True, WHITE), (S(PANEL_X + 18), S(TOP_BAR + 14)))
         requests = sorted(self.sim.requests.values(), key=lambda r: r.created)
-        y = TOP_BAR + 50
-        bottom = HEIGHT - 150
-        width = WIDTH - PANEL_X - 32
+        y = S(TOP_BAR + 50)
+        bottom = S(HEIGHT - 150)
+        width = S(WIDTH - PANEL_X - 32)
         if not requests:
-            screen.blit(self.f_text.render("All quiet on the line.", True, MUTED), (PANEL_X + 18, y))
+            screen.blit(self.f_text.render("All quiet on the line.", True, MUTED), (S(PANEL_X + 18), y))
         for i, request in enumerate(requests):
-            lines = self._wrap(request.text, width - 30)
-            height = 40 + 19 * len(lines)
+            lines = self._wrap(request.text, width - S(30))
+            height = S(40) + S(19) * len(lines)
             if y + height > bottom:
                 more = self.f_text.render(f"+ {len(requests) - i} more…", True, MUTED)
-                screen.blit(more, (PANEL_X + 18, y))
+                screen.blit(more, (S(PANEL_X + 18), y))
                 break
-            card = pygame.Rect(PANEL_X + 16, y, width, height)
-            pygame.draw.rect(screen, CARD, card, border_radius=8)
+            card = pygame.Rect(S(PANEL_X + 16), y, width, height)
+            pygame.draw.rect(screen, CARD, card, border_radius=S(8))
             colour = train_colour(request.train)
-            pygame.draw.rect(screen, colour, (card.x, card.y, 5, card.h), border_radius=3)
-            screen.blit(self.f_bold.render(request.train.name, True, WHITE), (card.x + 16, card.y + 9))
+            pygame.draw.rect(screen, colour, (card.x, card.y, S(5), card.h), border_radius=S(3))
+            screen.blit(self.f_bold.render(request.train.name, True, WHITE), (card.x + S(16), card.y + S(9)))
             waited = self.sim.time - request.created
             age = "now" if waited < 60 else f"{waited / 60:.0f} min ago"
             text = self.f_small.render(age, True, MUTED)
-            screen.blit(text, (card.right - text.get_width() - 12, card.y + 11))
+            screen.blit(text, (card.right - text.get_width() - S(12), card.y + S(11)))
             for j, line in enumerate(lines):
-                screen.blit(self.f_text.render(line, True, TEXT), (card.x + 16, card.y + 32 + 19 * j))
-            y += height + 10
+                screen.blit(self.f_text.render(line, True, TEXT), (card.x + S(16), card.y + S(32) + S(19) * j))
+            y += height + S(10)
 
     def _wrap(self, text: str, width: int) -> list[str]:
         lines, current = [], ""
@@ -318,7 +319,7 @@ class Renderer:
 
     def _draw_legend(self, screen) -> None:
         y = HEIGHT - 135
-        screen.blit(self.f_bold.render("How to play", True, WHITE), (PANEL_X + 18, y))
+        screen.blit(self.f_bold.render("How to play", True, WHITE), (S(PANEL_X + 18), S(y)))
         items = [
             ("signal", "Click a signal: red ↔ green"),
             ("point", "Click points: white straight, yellow to track 2"),
@@ -329,13 +330,13 @@ class Renderer:
             cy = y + 32 + i * 24
             cx = PANEL_X + 30
             if kind == "signal":
-                pygame.draw.circle(screen, GREEN, (cx - 6, cy), 6)
-                pygame.draw.circle(screen, RED, (cx + 8, cy), 6)
+                ui.circle(screen, GREEN, (S(cx - 6), S(cy)), S(6))
+                ui.circle(screen, RED, (S(cx + 8), S(cy)), S(6))
             elif kind == "point":
-                pygame.draw.rect(screen, YELLOW, (cx - 6, cy - 6, 12, 12), border_radius=2)
+                pygame.draw.rect(screen, YELLOW, SR(cx - 6, cy - 6, 12, 12), border_radius=S(2))
             elif kind == "ring":
-                pygame.draw.circle(screen, EAST_COLOUR, (cx, cy), 8, 2)
-            screen.blit(self.f_small.render(text, True, TEXT), (cx + 22, cy - 9))
+                ui.ring(screen, EAST_COLOUR, (S(cx), S(cy)), S(8), S(2))
+            screen.blit(self.f_small.render(text, True, TEXT), (S(cx + 22), S(cy - 9)))
 
     def _draw_hover(self, screen, hover) -> None:
         obj = self.object_at(hover)
@@ -348,8 +349,8 @@ class Renderer:
         else:
             text = f"Points {obj.id} · {obj.station.name} · set to track {obj.track}"
         label = self.f_small.render(text, True, WHITE)
-        box = label.get_rect(topleft=(hover[0] + 14, hover[1] + 14)).inflate(12, 8)
-        if box.right > PANEL_X:
-            box.right = hover[0] - 10
-        pygame.draw.rect(screen, (0, 0, 0), box, border_radius=5)
+        box = label.get_rect(topleft=(hover[0] + S(14), hover[1] + S(14))).inflate(S(12), S(8))
+        if box.right > S(PANEL_X):
+            box.right = hover[0] - S(10)
+        pygame.draw.rect(screen, (0, 0, 0), box, border_radius=S(5))
         screen.blit(label, label.get_rect(center=box.center))
