@@ -20,6 +20,11 @@ class TrainPlan:
     direction: int
     enters: str  # "HH:MM"
 
+    @property
+    def stops_at_halts(self) -> bool:
+        """Regional trains (R) stop everywhere; Inter-Regional trains (IR) skip the halts."""
+        return not self.name.startswith("IR")
+
 
 @dataclass
 class LevelInfo:
@@ -102,6 +107,8 @@ def make_timetable(line: Line, plan: TrainPlan) -> Train:
     pos = edge
     stops = []
     for st in stations:
+        if not st.has_loop and not plan.stops_at_halts:
+            continue
         target = st.stop_position(direction)
         time += abs(target - pos) / MAX_SPEED + RUNNING_MARGIN
         arrive = time

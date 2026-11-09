@@ -34,7 +34,6 @@ class Game:
         self.screen = screen
         self.clock = pygame.time.Clock()
         self.running = True
-        self.unlocked = len(LEVELS)  # every level can be played from the start
         self.scene = "menu"
         self.buttons: list[tuple[pygame.Rect, str]] = []
         self.f_title = font(40, bold=True)
@@ -49,6 +48,7 @@ class Game:
         self.info, self.sim = build_level(number)
         self.renderer = Renderer(self.sim)
         self.speed = DEFAULT_SPEED
+        self.paused_speed = DEFAULT_SPEED
         self.toast: str | None = None
         self.toast_until = 0
         self.scene = "playing"
@@ -71,8 +71,6 @@ class Game:
         if self.scene == "playing":
             self.sim.advance(real_seconds * self.speed)
             if self.sim.over:
-                if self.sim.passed:
-                    self.unlocked = max(self.unlocked, min(len(LEVELS), self.level_number + 1))
                 self.scene = "result"
         self.draw()
         pygame.display.flip()
@@ -89,7 +87,7 @@ class Game:
         if self.scene == "menu":
             if key == pygame.K_ESCAPE:
                 self.running = False
-            elif pygame.K_1 <= key <= pygame.K_9 and key - pygame.K_0 <= self.unlocked:
+            elif pygame.K_1 <= key <= pygame.K_9 and key - pygame.K_0 <= len(LEVELS):
                 self.start_level(key - pygame.K_0)
             return
         if key == pygame.K_ESCAPE:
@@ -98,7 +96,10 @@ class Game:
             self.start_level(self.level_number)
         elif self.scene == "playing":
             if key == pygame.K_SPACE:
-                self.speed = DEFAULT_SPEED if self.speed == 0 else 0
+                if self.speed == 0:
+                    self.speed = self.paused_speed  # carry on at the speed used before the pause
+                else:
+                    self.paused_speed, self.speed = self.speed, 0
             elif key in SPEED_KEYS:
                 self.speed = SPEED_KEYS[key]
         elif self.scene == "result" and key == pygame.K_RETURN:
@@ -113,6 +114,8 @@ class Game:
             return
         speed = self.renderer.speed_button_at(pos)
         if speed is not None:
+            if speed == 0 and self.speed != 0:
+                self.paused_speed = self.speed
             self.speed = speed
             return
         if self.renderer.restart_button_at(pos):
@@ -182,20 +185,16 @@ class Game:
         s.blit(sub, (S(80), S(118)))
         y = 180
         for info in LEVELS:
-            locked = info.number > self.unlocked
             rect = SR(80, y, 640, 86)
-            hovered = rect.collidepoint(pygame.mouse.get_pos()) and not locked
+            hovered = rect.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(s, BUTTON if hovered else CARD, rect, border_radius=S(10))
-            colour = MUTED if locked else WHITE
-            s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, colour), (rect.x + S(20), rect.y + S(14)))
-            detail = info.description if not locked else "Locked: pass the previous level first."
-            s.blit(self.f_text.render(detail, True, MUTED), (rect.x + S(20), rect.y + S(46)))
+            s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
+            s.blit(self.f_text.render(info.description, True, MUTED), (rect.x + S(20), rect.y + S(46)))
             meta = self.f_small.render(
                 f"{len(info.trains)} trains · limit {info.max_average_delay_min:.0f} min", True, MUTED
             )
             s.blit(meta, (rect.right - meta.get_width() - S(20), rect.y + S(18)))
-            if not locked:
-                self.buttons.append((rect, f"level:{info.number}"))
+            self.buttons.append((rect, f"level:{info.number}"))
             y += 100
 
         help_x = 780

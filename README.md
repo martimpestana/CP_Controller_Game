@@ -25,18 +25,25 @@ Each build is also kept as a download in the **Actions** tab (`cp-controller-web
 ## How to play
 
 - **Signals** (green/red dots): click to switch. Trains stop at red. A signal goes back to red
-  by itself once a train has passed it.
+  by itself once a train has passed it. An exit signal only turns green when the points after
+  it are set for its track.
 - **Points** (squares): click to switch. White sends trains straight to track 1, yellow sends
-  them to track 2. Points are locked while a train is on them.
+  them to track 2. Points are locked while a train is on them, or while a train is on its way
+  over them (a green signal in front of it, or already past that signal).
 - **Drivers' requests** (right panel): each driver tells you what they need. A request stays
   until it is done, and the signal or point it is about pulses on the map.
-- **Speed**: Pause, 1x, 5x, 10x or 20x with the buttons at the top, or Space / 1 / 2 / 3 / 4.
+- **Speed**: Pause, 1x, 5x, 10x or 20x with the buttons at the top, or 1 / 2 / 3 / 4.
+  Space pauses, and pressing it again carries on at the same speed.
 - **Restart**: the Restart button at the top (or R) starts the level again. Esc goes back to the menu.
 - **Winning**: get every train through with an average delay under the level's limit.
   A collision ends the level straight away.
 
 Eastbound trains (blue) are planned on track 1 at crossing stations and westbound trains
-(orange) on track 2, so that they can cross.
+(orange) on track 2, so that they can cross. If that track is already taken, the driver asks
+for the other one. Regional trains (R) stop at every station; Inter-Regional trains (IR) only
+stop at the crossing stations.
+
+All levels are available from the start.
 
 ## Levels
 

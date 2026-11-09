@@ -6,7 +6,7 @@ This module has no graphics, so it can be tested with pytest.
 import math
 from dataclasses import dataclass
 
-from railgame.track import EAST, POINT_OFFSET, Line, Point, Signal, Station
+from railgame.track import EAST, LOOP_HALF, POINT_OFFSET, Line, Point, Signal, Station
 from railgame.train import ACCELERATION, BRAKING, MAX_SPEED, MIN_DWELL, TRAIN_LENGTH, Stop, Train
 
 STEP = 0.5  # seconds per simulation step (big time jumps are split into steps)
@@ -51,8 +51,36 @@ class Simulation:
         if self.over:
             return "The level is over."
         signal = self.line.signal(signal_id)
+        if not signal.green:
+            point = self._route_point(signal)
+            if point is not None and not signal.is_entry and point.track != signal.track:
+                return f"Set the points at {signal.station.name} for track {signal.track} first."
         signal.green = not signal.green
         self._update_requests()
+        return None
+
+    def _heading_for(self, train: Train, signal: Signal) -> bool:
+        """Will this train reach the signal, following the points as they are set now?
+        (A green signal that no train is heading for does not lock anything.)"""
+        track = train.track
+        for _, kind, obj in self._objects_ahead(train):
+            if kind == "point":
+                track = obj.track if obj.is_facing(train.direction) else 1
+            elif kind == "signal" and obj.applies_to(train.direction, track):
+                if obj is signal:
+                    return True
+                if not obj.green:
+                    return False  # stopped by an earlier red signal
+        return False
+
+    def _route_point(self, signal: Signal) -> Point | None:
+        """The points a train goes over after passing this signal: the facing points into
+        the station after an entry signal, the trailing points out of it after an exit signal.
+        They stay locked while the signal is green, so the route cannot change under a train."""
+        side = -signal.direction if signal.is_entry else signal.direction
+        for p in self.line.points:
+            if p.station is signal.station and p.side == side:
+                return p
         return None
 
     def toggle_point(self, point_id: str) -> str | None:
@@ -63,7 +91,28 @@ class Simulation:
         for train in self.running_trains:
             if self._locks_point(train, point):
                 return f"Points at {point.station.name} are locked: {train.name} is passing over them."
+        for s in self.line.signals:
+            if self._route_point(s) is not point:
+                continue
+            if s.green and any(self._heading_for(t, s) for t in self.running_trains):
+                return f"Points at {point.station.name} are locked: signal {s.id} is green over them."
+            for train in self.running_trains:
+                # A train that has passed the signal but not yet the points keeps them locked.
+                d = train.direction
+                # (A train that has already stopped cannot be derailed, so it does not lock them.)
+                if (
+                    d == s.direction
+                    and train.speed > 0
+                    and (train.pos - s.pos) * d > 0
+                    and (point.pos - train.pos) * d > 0
+                ):
+                    return f"Points at {point.station.name} are locked: {train.name} is on its way over them."
         point.diverging = not point.diverging
+        # A green exit signal left behind with no train for it must not show a route that the
+        # points no longer give: it goes back to red.
+        for s in self.line.signals:
+            if s.green and not s.is_entry and self._route_point(s) is point and point.track != s.track:
+                s.green = False
         self._update_requests()
         return None
 
@@ -101,8 +150,8 @@ class Simulation:
         return self.finished and self.crash is None and self.average_delay() <= self.max_average_delay
 
     def average_delay(self) -> float:
-        """Average delay in seconds of the trains that have already appeared."""
-        started = [t for t in self.trains if t.state != "waiting"]
+        """Average delay in seconds of the trains that have appeared or are already late."""
+        started = [t for t in self.trains if t.state != "waiting" or t.delay(self.time) > 0]
         if not started:
             return 0.0
         return sum(t.delay(self.time) for t in started) / len(started)
@@ -140,6 +189,12 @@ class Simulation:
             low, high = other.span
             if high >= low_edge and low <= high_edge:
                 return
+            # A train standing at (or leaving) the first station towards the edge will use the
+            # stretch we are about to enter, which the player cannot protect with a signal.
+            if other.direction == -train.direction:
+                far_end = first.pos + train.direction * LOOP_HALF
+                if (low - far_end) * train.direction <= 0 or (high - far_end) * train.direction <= 0:
+                    return
         for s in self.line.signals:
             if s.station is first and s.direction == -train.direction and s.track and s.green:
                 # A train has been given the way out towards us. Only wait if there is a train
@@ -259,7 +314,11 @@ class Simulation:
         passed.sort(key=lambda o: (o.pos - old) * train.direction)
         for obj in passed:
             if isinstance(obj, Point):
-                train.track = obj.track if obj.is_facing(train.direction) else 1
+                new_track = obj.track if obj.is_facing(train.direction) else 1
+                if new_track != train.track:
+                    train.track_changes.append((obj.pos, new_track))
+                    del train.track_changes[:-4]
+                train.track = new_track
             elif isinstance(obj, Signal) and obj.applies_to(train.direction, train.track):
                 obj.green = False  # signals go back to red once a train has passed
 
@@ -301,6 +360,30 @@ class Simulation:
             else:
                 self.requests[key] = Request(key, train, text, target, self.time)
 
+    def _track_busy(self, station: Station, track: int, me: Train) -> bool:
+        """Is another train on this platform track, or already on its way into it?"""
+        exits = [s for s in self.line.signals if s.station is station and s.track == track]
+        for other in self.running_trains:
+            if other is me:
+                continue
+            low, high = other.span
+            if other.track == track and high >= station.pos - LOOP_HALF and low <= station.pos + LOOP_HALF:
+                return True
+            if any(s.direction == other.direction and self._heading_for(other, s) for s in exits):
+                return True
+        return False
+
+    def _wanted_track(self, train: Train, station: Station) -> int | None:
+        """The platform track the driver asks for: the planned one, or the other one if the
+        planned track is already taken by another train."""
+        planned = train.planned_track(station)
+        if planned is None:
+            return None
+        other = 2 if planned == 1 else 1
+        if self._track_busy(station, planned, train) and not self._track_busy(station, other, train):
+            return other
+        return planned
+
     def _requests_for(self, train: Train) -> list[tuple[tuple, str, str]]:
         out = []
         track = train.track
@@ -324,7 +407,7 @@ class Simulation:
             if kind == "point":
                 point: Point = obj
                 if point.is_facing(train.direction):
-                    planned = train.planned_track(point.station)
+                    planned = self._wanted_track(train, point.station)
                     if planned is not None and planned != point.track:
                         out.append(
                             (
@@ -369,8 +452,7 @@ class Simulation:
                 else:
                     text = f"Coming through {signal.station.name}. Signal {signal.id} to green, please."
                 out.append(((train.name, signal.id), text, signal.id))
-                if not signal.is_entry:
-                    break
-                # Behind a red entry signal the driver still asks for the points to be set.
+                # Behind a red signal the driver still asks for the points to be set
+                # (an exit signal can only turn green once they are right).
                 asked_for_signal = True
         return out
