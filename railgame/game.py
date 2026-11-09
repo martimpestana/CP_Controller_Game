@@ -34,7 +34,7 @@ class Game:
         self.screen = screen
         self.clock = pygame.time.Clock()
         self.running = True
-        self.unlocked = 1
+        self.unlocked = len(LEVELS)  # every level can be played from the start
         self.scene = "menu"
         self.buttons: list[tuple[pygame.Rect, str]] = []
         self.f_title = font(40, bold=True)
