@@ -183,3 +183,37 @@ def test_careful_player_passes_level(number):
         sim.advance(1)
     assert sim.crash is None
     assert sim.passed
+
+
+def test_train_waiting_in_front_of_wrong_points_does_not_lock_them():
+    # The exit signal is green but the points at the end of the station are wrong:
+    # the train stops in front of them and the player must still be able to set them.
+    sim, train = single_train_sim()
+    sim.toggle_signal("FAR-E0")
+    assert run_until(sim, lambda: train.stops[0].served)
+    sim.toggle_point("FAR-PE")  # wrong: train is on track 1
+    sim.toggle_signal("FAR-E1")
+    point = sim.line.point("FAR-PE")
+    assert run_until(sim, lambda: train.speed == 0 and train.pos > sim.line.signal("FAR-E1").pos)
+    assert point.pos - train.pos < 30
+    assert sim.toggle_point("FAR-PE") is None
+    assert run_until(sim, lambda: train.pos > point.pos + 10)
+
+
+def test_green_signal_with_nobody_to_use_it_does_not_keep_trains_off_the_map():
+    line = algarve_faro_tavira()
+    arriving = make_timetable(line, TrainPlan("IN", WEST, "00:00"))
+    sim = Simulation(line, [arriving], 0, 180)
+    sim.toggle_signal("TAV-E2")  # left green, but there is no eastbound train at all
+    sim.advance(1)
+    assert arriving.state == "running"
+
+
+def test_new_train_waits_while_a_train_has_the_way_out_towards_it():
+    line = algarve_faro_tavira()
+    leaving = Train("OUT", EAST, 0, [], pos=29900, track=2, state="running")
+    arriving = make_timetable(line, TrainPlan("IN", WEST, "00:00"))
+    sim = Simulation(line, [leaving, arriving], 0, 180)
+    sim.toggle_signal("TAV-E2")
+    sim.advance(0.5)
+    assert arriving.state == "waiting"

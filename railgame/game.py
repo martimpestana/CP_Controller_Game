@@ -24,7 +24,7 @@ from railgame.render import (
 from railgame.track import Point, Signal
 from railgame.ui import IN_BROWSER, S, SR, best_scale, make_dpi_aware, set_scale
 
-SPEED_KEYS = {pygame.K_1: 1, pygame.K_2: 5, pygame.K_3: 10}
+SPEED_KEYS = {pygame.K_1: 1, pygame.K_2: 5, pygame.K_3: 10, pygame.K_4: 20}
 DEFAULT_SPEED = 5
 BROWSER_SCALE = 1.5
 
@@ -114,6 +114,9 @@ class Game:
         speed = self.renderer.speed_button_at(pos)
         if speed is not None:
             self.speed = speed
+            return
+        if self.renderer.restart_button_at(pos):
+            self.start_level(self.level_number)
             return
         obj = self.renderer.object_at(pos)
         if isinstance(obj, Signal):

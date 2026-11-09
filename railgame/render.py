@@ -36,6 +36,9 @@ BUTTON_ON = (70, 120, 200)
 
 SIGNAL_SIDE = 14  # pixels between a signal and its track
 
+# Speed buttons in the top bar: (simulated seconds per real second, label).
+SPEEDS = ((0, "Pause"), (1, "1x"), (5, "5x"), (10, "10x"), (20, "20x"))
+
 
 def clock_text(seconds: float, with_seconds: bool = False) -> str:
     seconds = int(seconds) % (24 * 3600)
@@ -64,6 +67,7 @@ class Renderer:
         self.f_title = font(19, bold=True)
         self.f_big = font(34, bold=True)
         self.speed_buttons: list[tuple[pygame.Rect, int]] = []
+        self.restart_button: pygame.Rect | None = None
         self._prepare_background()
 
     # ------------------------------------------------------------------ positions used for clicks
@@ -94,6 +98,9 @@ class Renderer:
             if rect.collidepoint(pos):
                 return speed
         return None
+
+    def restart_button_at(self, pos: tuple[int, int]) -> bool:
+        return self.restart_button is not None and self.restart_button.collidepoint(pos)
 
     # ------------------------------------------------------------------ background (drawn once)
 
@@ -256,13 +263,21 @@ class Renderer:
         screen.blit(self.f_title.render(clock_text(sim.time, True), True, WHITE), (x, S(16)))
         x += S(110)
         self.speed_buttons = []
-        for value, label in ((0, "Pause"), (1, "1x"), (5, "5x"), (10, "10x")):
+        for value, label in SPEEDS:
             text = self.f_bold.render(label, True, WHITE)
             rect = pygame.Rect(x, S(13), text.get_width() + S(20), S(30))
             pygame.draw.rect(screen, BUTTON_ON if speed == value else BUTTON, rect, border_radius=S(6))
             screen.blit(text, text.get_rect(center=rect.center))
             self.speed_buttons.append((rect, value))
             x = rect.right + S(6)
+
+        # Restart the level from the beginning (same as the R key).
+        x += S(8)
+        text = self.f_bold.render("Restart", True, WHITE)
+        self.restart_button = pygame.Rect(x, S(13), text.get_width() + S(20), S(30))
+        pygame.draw.rect(screen, (120, 60, 60), self.restart_button, border_radius=S(6))
+        screen.blit(text, text.get_rect(center=self.restart_button.center))
+        x = self.restart_button.right
 
         x += S(24)
         average = sim.average_delay()
@@ -324,7 +339,7 @@ class Renderer:
             ("signal", "Click a signal: red ↔ green"),
             ("point", "Click points: white straight, yellow to track 2"),
             ("ring", "Pulsing ring: a driver is waiting for it"),
-            ("keys", "Space pause · 1/2/3 speed · R restart · Esc menu"),
+            ("keys", "Space pause · 1/2/3/4 speed · R restart · Esc menu"),
         ]
         for i, (kind, text) in enumerate(items):
             cy = y + 32 + i * 24
