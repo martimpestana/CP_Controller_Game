@@ -1,0 +1,58 @@
+name: Browser version
+
+# Builds the browser version of the game with pygbag on every push and pull request.
+# On the main branch it is also published with GitHub Pages.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pygbag
+        run: pip install "pygbag==0.9.3"
+      - name: Build the web version
+        run: |
+          mkdir -p web/cp_controller
+          cp -r main.py railgame web/cp_controller/
+          cd web
+          pygbag --build cp_controller
+          ls -la cp_controller/build/web
+      - name: Keep the build as a download
+        uses: actions/upload-artifact@v4
+        with:
+          name: cp-controller-web
+          path: web/cp_controller/build/web
+      - name: Prepare for GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/cp_controller/build/web
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

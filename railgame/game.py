@@ -1,5 +1,7 @@
 """The game window: menu, playing a level and the result screen."""
 
+import asyncio
+
 import pygame
 
 from railgame.levels import LEVELS, build_level
@@ -20,10 +22,11 @@ from railgame.render import (
     minutes_text,
 )
 from railgame.track import Point, Signal
-from railgame.ui import S, SR, best_scale, make_dpi_aware, set_scale
+from railgame.ui import IN_BROWSER, S, SR, best_scale, make_dpi_aware, set_scale
 
 SPEED_KEYS = {pygame.K_1: 1, pygame.K_2: 5, pygame.K_3: 10}
 DEFAULT_SPEED = 5
+BROWSER_SCALE = 1.5
 
 
 class Game:
@@ -56,19 +59,23 @@ class Game:
 
     # ------------------------------------------------------------------ main loop
 
-    def run(self) -> None:
+    async def run(self) -> None:
         while self.running:
-            real_seconds = self.clock.tick(60) / 1000
-            for event in pygame.event.get():
-                self.handle(event)
-            if self.scene == "playing":
-                self.sim.advance(real_seconds * self.speed)
-                if self.sim.over:
-                    if self.sim.passed:
-                        self.unlocked = max(self.unlocked, min(len(LEVELS), self.level_number + 1))
-                    self.scene = "result"
-            self.draw()
-            pygame.display.flip()
+            self.frame()
+            await asyncio.sleep(0)  # lets the browser version breathe between frames
+
+    def frame(self) -> None:
+        real_seconds = min(self.clock.tick(60) / 1000, 0.25)
+        for event in pygame.event.get():
+            self.handle(event)
+        if self.scene == "playing":
+            self.sim.advance(real_seconds * self.speed)
+            if self.sim.over:
+                if self.sim.passed:
+                    self.unlocked = max(self.unlocked, min(len(LEVELS), self.level_number + 1))
+                self.scene = "result"
+        self.draw()
+        pygame.display.flip()
 
     def handle(self, event) -> None:
         if event.type == pygame.QUIT:
@@ -209,7 +216,8 @@ class Game:
         ]
         for i, tip in enumerate(tips):
             s.blit(self.f_text.render(tip, True, TEXT), (S(help_x), S(220 + i * 24)))
-        self.button(SR(80, HEIGHT - 70, 120, 44), "Quit", "quit")
+        if not IN_BROWSER:  # a web page is closed with the browser tab instead
+            self.button(SR(80, HEIGHT - 70, 120, 44), "Quit", "quit")
 
     def draw_result(self) -> None:
         s = self.screen
@@ -259,11 +267,12 @@ class Game:
             self.button(pygame.Rect(box.x + S(300), y, S(200), S(44)), "Try again", "retry", primary=True)
 
 
-def main() -> None:
+async def main() -> None:
     make_dpi_aware()
     pygame.init()
-    set_scale(best_scale())
+    # In the browser the page scales the canvas to fit, so draw at a fixed, sharp size.
+    set_scale(BROWSER_SCALE if IN_BROWSER else best_scale())
     pygame.display.set_caption("CP Controller")
     screen = pygame.display.set_mode((S(WIDTH), S(HEIGHT)))
-    Game(screen).run()
+    await Game(screen).run()
     pygame.quit()

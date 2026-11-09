@@ -10,7 +10,13 @@ import os
 import sys
 
 import pygame
-from pygame import gfxdraw
+
+try:
+    from pygame import gfxdraw
+except ImportError:  # some builds (e.g. in the browser) may not have it
+    gfxdraw = None
+
+IN_BROWSER = sys.platform == "emscripten"
 
 DESIGN_WIDTH, DESIGN_HEIGHT = 1280, 720
 
@@ -36,6 +42,11 @@ def SR(x: float, y: float, w: float, h: float) -> pygame.Rect:
 
 
 def font(size: int, bold: bool = False) -> pygame.font.Font:
+    if IN_BROWSER:
+        # The browser has no system fonts, so use pygame's built-in one.
+        f = pygame.font.Font(None, round(S(size) * 1.3))
+        f.set_bold(bold)
+        return f
     return pygame.font.SysFont("segoeui,dejavusans,arial,helvetica", S(size), bold=bold)
 
 
@@ -74,18 +85,27 @@ def circle(surf, colour, centre, radius) -> None:
     x, y, r = int(round(centre[0])), int(round(centre[1])), int(round(radius))
     if r < 1:
         return
+    if gfxdraw is None:
+        pygame.draw.circle(surf, colour, (x, y), r)
+        return
     gfxdraw.aacircle(surf, x, y, r, colour)
     gfxdraw.filled_circle(surf, x, y, r, colour)
 
 
 def ring(surf, colour, centre, radius, width) -> None:
     x, y = int(round(centre[0])), int(round(centre[1]))
+    if gfxdraw is None:
+        pygame.draw.circle(surf, colour, (x, y), int(round(radius)), max(1, int(round(width))))
+        return
     for i in range(max(1, int(round(width)))):
         gfxdraw.aacircle(surf, x, y, int(round(radius)) - i, colour)
 
 
 def thick_lines(surf, colour, points, width) -> None:
     """A smooth polyline of any width, with round joints."""
+    if gfxdraw is None:
+        pygame.draw.lines(surf, colour, False, points, max(1, int(round(width))))
+        return
     half = width / 2
     pts = [p for i, p in enumerate(points) if i == 0 or math.dist(p, points[i - 1]) > 0.01]
     for a, b in zip(pts, pts[1:]):

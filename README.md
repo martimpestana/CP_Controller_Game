@@ -15,6 +15,13 @@ uv run main.py   # play
 uv run pytest    # run the tests
 ```
 
+## Play in the browser
+
+Every push to `main` builds a browser version with [pygbag](https://pypi.org/project/pygbag/)
+(the same Python code, compiled to WebAssembly) and publishes it with GitHub Pages
+(see `.github/workflows/web.yml`). The address appears under **Settings → Pages**.
+Each build is also kept as a download in the **Actions** tab (`cp-controller-web`).
+
 ## How to play
 
 - **Signals** (green/red dots): click to switch. Trains stop at red. A signal goes back to red
