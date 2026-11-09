@@ -15,7 +15,8 @@ REQUEST_DISTANCE = 2500.0  # drivers start asking when they are this close
 STOP_TOLERANCE = 3.0  # metres
 SIGNAL_MARGIN = 15.0  # trains stop this far before a red signal or a wrong point
 SPAWN_CLEARANCE = 2500.0  # a new train needs this much free track at the edge of the map
-POINT_LOCK = 40.0  # points cannot move while a train is this close to them
+POINT_LOCK = 40.0  # points cannot move while a moving train is this close to them
+POINT_LOCK_STOPPED = 5.0  # ...or while a train is standing on them (less than SIGNAL_MARGIN)
 
 
 @dataclass
@@ -60,12 +61,26 @@ class Simulation:
             return "The level is over."
         point = self.line.point(point_id)
         for train in self.running_trains:
-            low, high = train.span
-            if low - POINT_LOCK <= point.pos <= high + POINT_LOCK:
+            if self._locks_point(train, point):
                 return f"Points at {point.station.name} are locked: {train.name} is passing over them."
         point.diverging = not point.diverging
         self._update_requests()
         return None
+
+    @staticmethod
+    def _locks_point(train: Train, point: Point) -> bool:
+        """A train locks the points under it, and the points just ahead of it while it moves.
+
+        A train that has stopped in front of wrong points (SIGNAL_MARGIN away) must not lock
+        them, otherwise nobody could ever set them for it and it would be stuck forever.
+        """
+        ahead = POINT_LOCK if train.speed > 0 else POINT_LOCK_STOPPED
+        low, high = train.span
+        if train.direction == EAST:
+            low, high = low - POINT_LOCK_STOPPED, high + ahead
+        else:
+            low, high = low - ahead, high + POINT_LOCK_STOPPED
+        return low <= point.pos <= high
 
     # ------------------------------------------------------------------ state
 
@@ -127,7 +142,14 @@ class Simulation:
                 return
         for s in self.line.signals:
             if s.station is first and s.direction == -train.direction and s.track and s.green:
-                return  # a train has been given the way out towards us
+                # A train has been given the way out towards us. Only wait if there is a train
+                # that can still use that signal: a green signal left behind with nobody to use
+                # it would otherwise keep the new train off the map forever.
+                if any(
+                    other.direction == s.direction and (other.pos - s.pos) * train.direction > 0
+                    for other in self.running_trains
+                ):
+                    return
         train.pos = edge + train.direction * TRAIN_LENGTH
         train.speed = MAX_SPEED * 0.8
         train.track = 1

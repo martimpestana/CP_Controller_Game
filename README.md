@@ -30,8 +30,8 @@ Each build is also kept as a download in the **Actions** tab (`cp-controller-web
   them to track 2. Points are locked while a train is on them.
 - **Drivers' requests** (right panel): each driver tells you what they need. A request stays
   until it is done, and the signal or point it is about pulses on the map.
-- **Speed**: Pause, 1x, 5x or 10x with the buttons at the top, or Space / 1 / 2 / 3.
-  R restarts the level, Esc goes back to the menu.
+- **Speed**: Pause, 1x, 5x, 10x or 20x with the buttons at the top, or Space / 1 / 2 / 3 / 4.
+- **Restart**: the Restart button at the top (or R) starts the level again. Esc goes back to the menu.
 - **Winning**: get every train through with an average delay under the level's limit.
   A collision ends the level straight away.
 
