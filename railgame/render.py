@@ -208,14 +208,18 @@ class Renderer:
         for train in self.sim.trains:
             if train.state != "running":
                 continue
-            if not (line.west_edge <= train.pos <= line.east_edge):
-                continue
+            low, high = train.span
+            if high < line.west_edge or low > line.east_edge:
+                continue  # completely off the map
             # Walk back from the front of the train until it is long enough to see (24 px).
-            shape = [self.layout.point(train.pos, train.track)]
+            # Each part of the body is drawn on its own track, so the tail follows the head
+            # through the points instead of jumping across.
+            shape = [self.layout.point(train.pos, train.track_at(train.pos))]
             drawn, metres = 0.0, 0.0
             while (drawn < S(24) or metres < TRAIN_LENGTH) and metres < 4000:
                 metres += 10
-                nxt = self.layout.point(train.pos - train.direction * metres, train.track)
+                p = train.pos - train.direction * metres
+                nxt = self.layout.point(p, train.track_at(p))
                 drawn += math.dist(shape[-1], nxt)
                 shape.append(nxt)
             head_xy, tail_xy = shape[0], shape[-1]

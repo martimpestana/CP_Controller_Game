@@ -33,6 +33,8 @@ class Train:
     state: str = "waiting"  # waiting -> running -> finished
     stopped_since: float | None = None
     final_delay: float | None = None
+    # (position, track) where the front of the train last changed track, newest last.
+    track_changes: list[tuple[float, int]] = field(default_factory=list)
 
     @property
     def tail(self) -> float:
@@ -45,6 +47,13 @@ class Train:
     @property
     def arrow(self) -> str:
         return "→" if self.direction == EAST else "←"
+
+    def track_at(self, pos: float) -> int:
+        """The track under a point of the train's body (the tail may still be on the old track)."""
+        for change_pos, track in reversed(self.track_changes):
+            if (pos - change_pos) * self.direction >= 0:
+                return track
+        return self.track_changes[0][1] ^ 3 if self.track_changes else self.track
 
     def next_stop(self) -> Stop | None:
         for stop in self.stops:

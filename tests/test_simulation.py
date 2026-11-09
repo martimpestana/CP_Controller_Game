@@ -144,7 +144,9 @@ def test_levels_build_and_timetables_are_in_order(info):
     for train in sim.trains:
         times = [t for stop in train.stops for t in (stop.arrive, stop.depart)]
         assert times == sorted(times)
-        assert len(train.stops) == len(sim.line.stations)
+        halts = sum(1 for st in sim.line.stations if not st.has_loop)
+        expected = len(sim.line.stations) - (0 if train.name.startswith("R ") else halts)
+        assert len(train.stops) == expected
 
 
 def careful_player_move(sim):
@@ -152,12 +154,35 @@ def careful_player_move(sim):
     up to the next crossing station."""
     line = sim.line
     loops = sorted((st for st in line.stations if st.has_loop), key=lambda st: st.pos)
-    for request in list(sim.requests.values()):
+    thrown = set()
+    for request in sorted(sim.requests.values(), key=lambda r: r.created):
         if request.target_id.endswith(("PW", "PE")):
-            sim.toggle_point(request.target_id)
+            if request.target_id not in thrown:  # first come, first served
+                thrown.add(request.target_id)
+                sim.toggle_point(request.target_id)
             continue
         signal = line.signal(request.target_id)
-        if not signal.is_entry:
+        if signal.is_entry:
+            point = sim._route_point(signal)
+            if point.track != sim._wanted_track(request.train, signal.station):
+                continue  # set the points first
+            if sim._track_busy(signal.station, point.track, request.train):
+                continue  # never send a train onto an occupied platform track
+            other_entry = [
+                s for s in line.signals
+                if s.station is signal.station and s.is_entry and s is not signal and s.green
+            ]
+            if any(sim._route_point(s).track == point.track for s in other_entry):
+                continue  # that track is already promised to a train from the other side
+            other_track = 2 if point.track == 1 else 1
+            if any(
+                t is not request.train and t.direction == request.train.direction
+                and sim._track_busy(signal.station, other_track, request.train)
+                and abs(t.pos - signal.station.pos) < 1000
+                for t in sim.running_trains
+            ):
+                continue  # keep one track free for trains coming the other way (no deadlock)
+        else:
             d = signal.direction
             i = loops.index(signal.station) + d
             if 0 <= i < len(loops):
@@ -173,7 +198,7 @@ def careful_player_move(sim):
         sim.toggle_signal(request.target_id)
 
 
-@pytest.mark.parametrize("number", [1, 2, 3])
+@pytest.mark.parametrize("number", [1, 2, 3, 4])
 def test_careful_player_passes_level(number):
     _, sim = build_level(number)
     for _ in range(4 * 3600):
@@ -185,19 +210,89 @@ def test_careful_player_passes_level(number):
     assert sim.passed
 
 
-def test_train_waiting_in_front_of_wrong_points_does_not_lock_them():
-    # The exit signal is green but the points at the end of the station are wrong:
-    # the train stops in front of them and the player must still be able to set them.
+def test_exit_signal_stays_red_until_the_points_are_set():
     sim, train = single_train_sim()
     sim.toggle_signal("FAR-E0")
     assert run_until(sim, lambda: train.stops[0].served)
-    sim.toggle_point("FAR-PE")  # wrong: train is on track 1
-    sim.toggle_signal("FAR-E1")
-    point = sim.line.point("FAR-PE")
-    assert run_until(sim, lambda: train.speed == 0 and train.pos > sim.line.signal("FAR-E1").pos)
-    assert point.pos - train.pos < 30
-    assert sim.toggle_point("FAR-PE") is None
-    assert run_until(sim, lambda: train.pos > point.pos + 10)
+    sim.toggle_point("FAR-PE")  # wrong: the train is on track 1
+    error = sim.toggle_signal("FAR-E1")
+    assert error is not None and "points" in error
+    assert not sim.line.signal("FAR-E1").green
+    texts = [r.text for r in sim.requests.values()]
+    assert any("set the points" in t for t in texts)  # the driver tells you what is wrong
+    sim.toggle_point("FAR-PE")
+    assert sim.toggle_signal("FAR-E1") is None
+
+
+def test_points_are_locked_while_a_green_signal_leads_a_train_over_them():
+    sim, train = single_train_sim()
+    sim.advance(1)
+    sim.toggle_signal("FAR-E0")
+    error = sim.toggle_point("FAR-PW")
+    assert error is not None and "FAR-E0" in error
+
+
+def test_points_stay_locked_between_the_signal_and_the_points():
+    sim, train = single_train_sim()
+    sim.toggle_signal("FAR-E0")
+    signal, point = sim.line.signal("FAR-E0"), sim.line.point("FAR-PW")
+    assert run_until(sim, lambda: train.state == "running" and train.pos > signal.pos + 50)
+    assert not signal.green  # back to red behind the train
+    assert sim.toggle_point("FAR-PW") is not None
+
+
+def test_driver_asks_for_the_free_track_when_the_planned_one_is_taken():
+    line = algarve_faro_tavira()
+    olhao = line.station("OLH")
+    sitting = Train("SIT", EAST, 0, [Stop(olhao, 1, 0, 10**6)], pos=olhao.pos + 75, track=1, state="running")
+    sitting.stopped_since = 0
+    coming = make_timetable(line, TrainPlan("COME", EAST, "00:00"))
+    coming.pos, coming.state, coming.speed = olhao.pos - 2000, "running", 0
+    for stop in coming.stops[:2]:
+        stop.served, stop.departed_at = True, 0
+    sim = Simulation(line, [sitting, coming], 0, 10**6)
+    sim._update_requests()
+    texts = [r.text for r in sim.requests.values() if r.train is coming]
+    assert any("track 2" in t for t in texts), texts
+
+
+def test_inter_regional_trains_skip_the_halts():
+    line = algarve_faro_tavira()
+    ir = make_timetable(line, TrainPlan("IR 1", EAST, "08:00"))
+    r = make_timetable(line, TrainPlan("R 1", EAST, "08:00"))
+    assert all(stop.station.has_loop for stop in ir.stops)
+    assert len(r.stops) == len(line.stations)
+    assert ir.stops[-1].depart < r.stops[-1].depart
+
+
+def test_tail_stays_on_the_old_track_until_it_passes_the_points():
+    sim, train = single_train_sim()
+    sim.toggle_point("FAR-PW")
+    sim.toggle_signal("FAR-E0")
+    point = sim.line.point("FAR-PW")
+    assert run_until(sim, lambda: train.state == "running" and point.pos < train.pos < point.pos + 100)
+    assert train.track == 2
+    assert train.track_at(train.pos) == 2
+    assert train.track_at(train.tail) == 1
+
+
+def test_average_delay_counts_late_trains_still_waiting_to_enter():
+    line = algarve_faro_tavira()
+    blocker = Train("OUT", WEST, 0, [], pos=-1000, state="running")
+    late = make_timetable(line, TrainPlan("IN", EAST, "00:00"))
+    sim = Simulation(line, [blocker, late], 0, 180)
+    sim.time = late.stops[0].depart + 600
+    assert late.state == "waiting"
+    assert sim.average_delay() > 0
+
+
+def test_new_train_waits_while_a_train_leaves_the_first_station_towards_it():
+    line = algarve_faro_tavira()
+    leaving = Train("OUT", WEST, 0, [], pos=-394, state="running")  # just past the exit signal
+    arriving = make_timetable(line, TrainPlan("IN", EAST, "00:00"))
+    sim = Simulation(line, [leaving, arriving], 0, 180)
+    sim.advance(0.5)
+    assert arriving.state == "waiting"
 
 
 def test_green_signal_with_nobody_to_use_it_does_not_keep_trains_off_the_map():
