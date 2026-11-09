@@ -48,9 +48,9 @@ def test_clicks_work_when_the_window_is_scaled():
         screen = pygame.display.set_mode((ui.S(1280), ui.S(720)))
         game = Game(screen)
         game.start_level(1)
-        signal = game.sim.line.signal("OLH-E0")
+        signal = game.sim.line.signal("TAV-W0")
         x, y = game.renderer.signal_position(signal)
-        assert x > 1280 * 0.5  # really drawn in the bigger window
+        assert x > 1000  # Tavira is at about x=760 in a 1280 px window
         game.click((round(x), round(y)))
         assert signal.green
     finally:
