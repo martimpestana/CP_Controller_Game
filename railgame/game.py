@@ -4,12 +4,11 @@ import asyncio
 
 import pygame
 
+from railgame import render, skins
 from railgame.levels import LEVELS, build_level
 from railgame.render import (
-    BG,
-    BUTTON,
     BUTTON_ON,
-    CARD,
+    EAST_COLOUR,
     GREEN,
     HEIGHT,
     MUTED,
@@ -21,8 +20,11 @@ from railgame.render import (
     font,
     minutes_text,
 )
+from railgame.settings import Settings
+from railgame.themes import THEME_NAMES, THEMES
 from railgame.track import Point, Signal
 from railgame.ui import IN_BROWSER, S, SR, best_scale, make_dpi_aware, set_scale
+from railgame.ui import scale as ui_scale
 
 SPEED_KEYS = {pygame.K_1: 1, pygame.K_2: 5, pygame.K_3: 10, pygame.K_4: 20}
 DEFAULT_SPEED = 5
@@ -40,13 +42,15 @@ class Game:
         self.f_head = font(20, bold=True)
         self.f_text = font(16)
         self.f_small = font(14)
+        self.settings = Settings.load()
+        render.apply_theme(THEMES[self.settings.theme])
 
     # ------------------------------------------------------------------ levels
 
     def start_level(self, number: int) -> None:
         self.level_number = number
         self.info, self.sim = build_level(number)
-        self.renderer = Renderer(self.sim)
+        self.renderer = Renderer(self.sim, self.settings.skins)
         self.speed = DEFAULT_SPEED
         self.paused_speed = DEFAULT_SPEED
         self.toast: str | None = None
@@ -84,6 +88,10 @@ class Game:
             self.key(event.key)
 
     def key(self, key) -> None:
+        if self.scene == "customise":
+            if key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                self.scene = "menu"
+            return
         if self.scene == "menu":
             if key == pygame.K_ESCAPE:
                 self.running = False
@@ -146,6 +154,14 @@ class Game:
             self.start_level(self.level_number + 1)
         elif action == "menu":
             self.scene = "menu"
+        elif action == "customise":
+            self.scene = "customise"
+        elif action.startswith("skin:"):
+            _, kind, skin = action.split(":")
+            self.settings.set_skin(kind, skin)
+        elif action.startswith("theme:"):
+            self.settings.set_theme(action.split(":")[1])
+            render.apply_theme(THEMES[self.settings.theme])
         elif action == "quit":
             self.running = False
 
@@ -162,6 +178,9 @@ class Game:
         if self.scene == "menu":
             self.draw_menu()
             return
+        if self.scene == "customise":
+            self.draw_customise()
+            return
         hover = pygame.mouse.get_pos()
         toast = self.toast if pygame.time.get_ticks() < self.toast_until else None
         speed = self.speed if self.scene == "playing" else 0
@@ -171,7 +190,7 @@ class Game:
 
     def button(self, rect: pygame.Rect, label: str, action: str, primary: bool = False) -> None:
         hovered = rect.collidepoint(pygame.mouse.get_pos())
-        colour = BUTTON_ON if primary or hovered else BUTTON
+        colour = BUTTON_ON if primary or hovered else render.BUTTON
         pygame.draw.rect(self.screen, colour, rect, border_radius=S(8))
         text = self.f_head.render(label, True, WHITE)
         self.screen.blit(text, text.get_rect(center=rect.center))
@@ -179,7 +198,7 @@ class Game:
 
     def draw_menu(self) -> None:
         s = self.screen
-        s.fill(BG)
+        s.fill(render.BG)
         title = self.f_title.render("CP Controller", True, WHITE)
         s.blit(title, (S(80), S(60)))
         sub = self.f_text.render(
@@ -193,7 +212,7 @@ class Game:
         for info in LEVELS:
             rect = SR(80, y, 640, 86)
             hovered = rect.collidepoint(pygame.mouse.get_pos())
-            pygame.draw.rect(s, BUTTON if hovered else CARD, rect, border_radius=S(10))
+            pygame.draw.rect(s, render.BUTTON if hovered else render.CARD, rect, border_radius=S(10))
             s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
             s.blit(self.f_text.render(info.description, True, MUTED), (rect.x + S(20), rect.y + S(46)))
             meta = self.f_small.render(
@@ -224,8 +243,67 @@ class Game:
         ]
         for i, tip in enumerate(tips):
             s.blit(self.f_text.render(tip, True, TEXT), (S(help_x), S(220 + i * 24)))
+        self.button(SR(80, HEIGHT - 70, 180, 44), "Customise", "customise")
         if not IN_BROWSER:  # a web page is closed with the browser tab instead
-            self.button(SR(80, HEIGHT - 70, 120, 44), "Quit", "quit")
+            self.button(SR(280, HEIGHT - 70, 120, 44), "Quit", "quit")
+
+    def draw_customise(self) -> None:
+        """Pick a skin for each type of train and a colour theme. Choices are saved at once."""
+        s = self.screen
+        s.fill(render.BG)
+        mouse = pygame.mouse.get_pos()
+        s.blit(self.f_title.render("Customise", True, WHITE), (S(80), S(28)))
+        s.blit(
+            self.f_text.render("Click to choose. Your choice is saved for next time.", True, MUTED),
+            (S(80), S(80)),
+        )
+        t = pygame.time.get_ticks() / 1000
+        y = 120
+        for kind in skins.TRAIN_TYPES:
+            s.blit(self.f_head.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE), (S(80), S(y)))
+            y += 32
+            for i, (sid, name) in enumerate(skins.SKINS[kind]):
+                rect = SR(80 + i * 228, y, 216, 112)
+                chosen = self.settings.skin(kind) == sid
+                hovered = rect.collidepoint(mouse)
+                pygame.draw.rect(s, render.LAND, rect, border_radius=S(10))
+                if chosen or hovered:
+                    pygame.draw.rect(s, BUTTON_ON if chosen else MUTED, rect, S(3), border_radius=S(10))
+                k = (2.4 if kind == "R" else 1.9) * ui_scale()
+                width = (skins.CARS[kind] * 25 - 3) * k
+                skins.draw_preview(s, kind, sid, rect.centerx - width / 2, rect.y + S(54), k, EAST_COLOUR, t)
+                label = self.f_text.render(name + ("  ✓" if chosen else ""), True, WHITE if chosen else TEXT)
+                s.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - S(8))))
+                self.buttons.append((rect, f"skin:{kind}:{sid}"))
+            y += 128
+
+        s.blit(self.f_head.render("Map colours", True, WHITE), (S(80), S(y)))
+        y += 32
+        for i, (tid, name) in enumerate(THEME_NAMES):
+            colours = THEMES[tid]
+            rect = SR(80 + i * 285, y, 270, 112)
+            chosen = self.settings.theme == tid
+            hovered = rect.collidepoint(mouse)
+            # A tiny map: land, the sea in the bottom corner, a track and a station.
+            card = pygame.Surface(rect.size, pygame.SRCALPHA)
+            w, h = rect.size
+            card.fill(colours["LAND"])
+            pygame.draw.polygon(card, colours["SEA"], [(0, h - S(26)), (w, S(40)), (w, h), (0, h)])
+            pygame.draw.line(card, colours["SAND"], (S(30), h - S(14)), (w - S(20), S(60)), S(3))
+            pygame.draw.line(card, colours["TRACK"], (S(14), h - S(44)), (w - S(14), S(20)), S(3))
+            pygame.draw.circle(card, WHITE, (w // 2, h // 2 - S(12)), S(7))
+            mask = pygame.Surface(rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=S(10))
+            card.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            s.blit(card, rect.topleft)
+            box = pygame.Rect(rect.x, rect.y, rect.w, rect.h)
+            label = self.f_text.render(name + ("  ✓" if chosen else ""), True, WHITE)
+            tag = pygame.Rect(rect.x, rect.y, label.get_width() + S(20), S(30))
+            pygame.draw.rect(s, colours["PANEL"], tag, border_top_left_radius=S(10), border_bottom_right_radius=S(10))
+            s.blit(label, (rect.x + S(10), rect.y + S(5)))
+            pygame.draw.rect(s, BUTTON_ON if chosen else (MUTED if hovered else colours["BG"]), box, S(3), border_radius=S(10))
+            self.buttons.append((rect, f"theme:{tid}"))
+        self.button(SR(80, HEIGHT - 64, 140, 44), "Back", "menu", primary=True)
 
     def draw_result(self) -> None:
         s = self.screen
@@ -234,7 +312,7 @@ class Game:
         s.blit(shade, (0, 0))
         box = SR(0, 0, 560, 300)
         box.center = (S(WIDTH // 2), S(HEIGHT // 2))
-        pygame.draw.rect(s, CARD, box, border_radius=S(14))
+        pygame.draw.rect(s, render.CARD, box, border_radius=S(14))
 
         sim = self.sim
         if sim.crash:
