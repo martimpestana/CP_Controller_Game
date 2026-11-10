@@ -41,6 +41,11 @@ SKINS = {
 
 DEFAULT_SKINS = {kind: SKINS[kind][0][0] for kind in TRAIN_TYPES}
 
+# How far a skin reaches beyond the front and the rear of the train (heads, fire, tails),
+# in design pixels, so the menu can fit the whole picture in its card.
+EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern"): (5, 5), ("IR", "modern"): (5, 5),
+          ("R", "gem"): (5, 5), ("IR", "gem"): (5, 5), ("R", "vintage"): (2, 0), ("IR", "vintage"): (3, 0)}
+
 # How many carriages each type has on the map.
 CARS = {"R": 2, "IR": 3}
 

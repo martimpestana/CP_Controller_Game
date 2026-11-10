@@ -269,9 +269,11 @@ class Game:
                 pygame.draw.rect(s, render.LAND, rect, border_radius=S(10))
                 if chosen or hovered:
                     pygame.draw.rect(s, BUTTON_ON if chosen else MUTED, rect, S(3), border_radius=S(10))
-                k = (2.4 if kind == "R" else 1.9) * ui_scale()
-                width = (skins.CARS[kind] * 25 - 3) * k
-                skins.draw_preview(s, kind, sid, rect.centerx - width / 2, rect.y + S(54), k, EAST_COLOUR, t)
+                ahead, behind = skins.EXTENT.get((kind, sid), (0, 0))
+                length = skins.CARS[kind] * 25 - 3
+                k = min(2.6, 196 / (length + ahead + behind)) * ui_scale()
+                left = rect.centerx - (length + ahead + behind) * k / 2 + ahead * k
+                skins.draw_preview(s, kind, sid, left, rect.y + S(56), k, EAST_COLOUR, t)
                 label = self.f_text.render(name + ("  ✓" if chosen else ""), True, WHITE if chosen else TEXT)
                 s.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - S(8))))
                 self.buttons.append((rect, f"skin:{kind}:{sid}"))
