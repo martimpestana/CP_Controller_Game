@@ -7,7 +7,7 @@ from pathlib import Path
 import pygame
 
 from railgame import render, skins
-from railgame.levels import LEVELS, build_level
+from railgame.levels import LEVELS, LINE_BLURBS, LINE_NAMES, build_level
 from railgame.render import (
     BUTTON_ON,
     EAST_COLOUR,
@@ -38,7 +38,8 @@ class Game:
         self.screen = screen
         self.clock = pygame.time.Clock()
         self.running = True
-        self.scene = "menu"
+        self.scene = "menu"  # menu (choose a line) -> levels (of that line) -> playing -> result
+        self.line_key = next(iter(LEVELS))
         self.buttons: list[tuple[pygame.Rect, str]] = []
         self.f_title = font(40, bold=True)
         self.f_head = font(20, bold=True)
@@ -49,9 +50,20 @@ class Game:
 
     # ------------------------------------------------------------------ levels
 
-    def start_level(self, number: int) -> None:
+    @property
+    def levels(self):
+        """The levels of the line chosen in the menu."""
+        return LEVELS[self.line_key]
+
+    def choose_line(self, line_key: str) -> None:
+        self.line_key = line_key
+        self.scene = "levels"
+
+    def start_level(self, number: int, line_key: str | None = None) -> None:
+        if line_key is not None:
+            self.line_key = line_key
         self.level_number = number
-        self.info, self.sim = build_level(number)
+        self.info, self.sim = build_level(self.line_key, number)
         self.renderer = Renderer(self.sim, self.settings.skins)
         self.speed = DEFAULT_SPEED
         self.paused_speed = DEFAULT_SPEED
@@ -95,13 +107,20 @@ class Game:
                 self.scene = "menu"
             return
         if self.scene == "menu":
+            lines = list(LEVELS)
             if key == pygame.K_ESCAPE:
                 self.running = False
-            elif pygame.K_1 <= key <= pygame.K_9 and key - pygame.K_0 <= len(LEVELS):
+            elif pygame.K_1 <= key <= pygame.K_9 and key - pygame.K_0 <= len(lines):
+                self.choose_line(lines[key - pygame.K_1])
+            return
+        if self.scene == "levels":
+            if key == pygame.K_ESCAPE:
+                self.scene = "menu"
+            elif pygame.K_1 <= key <= pygame.K_9 and key - pygame.K_0 <= len(self.levels):
                 self.start_level(key - pygame.K_0)
             return
         if key == pygame.K_ESCAPE:
-            self.scene = "menu"
+            self.scene = "levels"
         elif key == pygame.K_r:
             self.start_level(self.level_number)
         elif self.scene == "playing":
@@ -148,14 +167,19 @@ class Game:
             self.show_toast(error)
 
     def do(self, action: str) -> None:
-        if action.startswith("level:"):
-            self.start_level(int(action.split(":")[1]))
+        if action.startswith("line:"):
+            self.choose_line(action.split(":")[1])
+        elif action.startswith("level:"):
+            _, line_key, number = action.split(":")
+            self.start_level(int(number), line_key)
         elif action == "retry":
             self.start_level(self.level_number)
         elif action == "next":
             self.start_level(self.level_number + 1)
         elif action == "menu":
             self.scene = "menu"
+        elif action == "levels":
+            self.scene = "levels"
         elif action == "customise":
             self.scene = "customise"
         elif action.startswith("skin:"):
@@ -168,7 +192,7 @@ class Game:
             self.running = False
 
     def next_or_retry(self) -> None:
-        if self.sim.passed and self.level_number < len(LEVELS):
+        if self.sim.passed and self.level_number < len(self.levels):
             self.do("next")
         else:
             self.do("retry")
@@ -179,6 +203,9 @@ class Game:
         self.buttons = []
         if self.scene == "menu":
             self.draw_menu()
+            return
+        if self.scene == "levels":
+            self.draw_levels()
             return
         if self.scene == "customise":
             self.draw_customise()
@@ -204,25 +231,26 @@ class Game:
         title = self.f_title.render("CP Controller", True, WHITE)
         s.blit(title, (S(80), S(60)))
         sub = self.f_text.render(
-            "You control the signals and points of the Algarve line. Keep the trains moving, "
-            "keep them apart, keep them on time.",
+            "You control the signals and points of a Portuguese railway line. Keep the trains "
+            "moving, keep them apart, keep them on time.",
             True,
             MUTED,
         )
         s.blit(sub, (S(80), S(118)))
-        y = 180
-        for info in LEVELS:
-            rect = SR(80, y, 640, 86)
+        s.blit(self.f_head.render("Choose a line", True, WHITE), (S(80), S(180)))
+        y = 220
+        for i, (key, levels) in enumerate(LEVELS.items(), 1):
+            rect = SR(80, y, 640, 110)
             hovered = rect.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(s, render.BUTTON if hovered else render.CARD, rect, border_radius=S(10))
-            s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
-            s.blit(self.f_text.render(info.description, True, MUTED), (rect.x + S(20), rect.y + S(46)))
-            meta = self.f_small.render(
-                f"{len(info.trains)} trains · limit {info.max_average_delay_min:.0f} min", True, MUTED
-            )
+            where, trains = LINE_BLURBS.get(key, ("", ""))
+            s.blit(self.f_head.render(f"{i} · {LINE_NAMES[key]}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
+            s.blit(self.f_text.render(where, True, MUTED), (rect.x + S(20), rect.y + S(46)))
+            s.blit(self.f_text.render(f"Trains: {trains}", True, TEXT), (rect.x + S(20), rect.y + S(74)))
+            meta = self.f_small.render(f"{len(levels)} levels", True, MUTED)
             s.blit(meta, (rect.right - meta.get_width() - S(20), rect.y + S(18)))
-            self.buttons.append((rect, f"level:{info.number}"))
-            y += 100
+            self.buttons.append((rect, f"line:{key}"))
+            y += 126
 
         help_x = 780
         s.blit(self.f_head.render("How it works", True, WHITE), (S(help_x), S(180)))
@@ -248,6 +276,38 @@ class Game:
         self.button(SR(80, HEIGHT - 70, 180, 44), "Customise", "customise")
         if not IN_BROWSER:  # a web page is closed with the browser tab instead
             self.button(SR(280, HEIGHT - 70, 120, 44), "Quit", "quit")
+
+    def draw_levels(self) -> None:
+        """The levels of the chosen line, from the first shift to the hardest one."""
+        s = self.screen
+        s.fill(render.BG)
+        s.blit(self.f_title.render(LINE_NAMES[self.line_key], True, WHITE), (S(80), S(40)))
+        where, trains = LINE_BLURBS.get(self.line_key, ("", ""))
+        s.blit(self.f_text.render(f"{where}  Trains: {trains}.", True, MUTED), (S(80), S(98)))
+        mouse = pygame.mouse.get_pos()
+        for i, info in enumerate(self.levels):
+            column, row = divmod(i, 4)
+            rect = SR(80 + column * 570, 140 + row * 112, 550, 98)
+            hovered = rect.collidepoint(mouse)
+            pygame.draw.rect(s, render.BUTTON if hovered else render.CARD, rect, border_radius=S(10))
+            s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
+            words, lines, current = info.description.split(), [], ""
+            for word in words:
+                test = (current + " " + word).strip()
+                if self.f_small.size(test)[0] > rect.width - S(40):
+                    lines.append(current)
+                    current = word
+                else:
+                    current = test
+            lines.append(current)
+            for j, text in enumerate(lines[:2]):
+                s.blit(self.f_small.render(text, True, MUTED), (rect.x + S(20), rect.y + S(46 + j * 20)))
+            meta = self.f_small.render(
+                f"{len(info.trains)} trains · limit {info.max_average_delay_min:.0f} min", True, MUTED
+            )
+            s.blit(meta, (rect.right - meta.get_width() - S(20), rect.y + S(18)))
+            self.buttons.append((rect, f"level:{self.line_key}:{info.number}"))
+        self.button(SR(80, HEIGHT - 70, 140, 44), "Back", "menu", primary=True)
 
     def draw_customise(self) -> None:
         """Pick a skin for each type of train and a colour theme. Choices are saved at once."""
@@ -348,12 +408,12 @@ class Game:
             s.blit(t, t.get_rect(center=(box.centerx, box.y + S(120 + i * 24))))
 
         y = box.bottom - S(70)
-        if sim.passed and self.level_number < len(LEVELS):
-            self.button(pygame.Rect(box.x + S(30), y, S(150), S(44)), "Menu", "menu")
+        if sim.passed and self.level_number < len(self.levels):
+            self.button(pygame.Rect(box.x + S(30), y, S(150), S(44)), "Levels", "levels")
             self.button(pygame.Rect(box.x + S(200), y, S(150), S(44)), "Replay", "retry")
             self.button(pygame.Rect(box.x + S(370), y, S(160), S(44)), "Next level", "next", primary=True)
         else:
-            self.button(pygame.Rect(box.x + S(60), y, S(200), S(44)), "Menu", "menu")
+            self.button(pygame.Rect(box.x + S(60), y, S(200), S(44)), "Levels", "levels")
             self.button(pygame.Rect(box.x + S(300), y, S(200), S(44)), "Try again", "retry", primary=True)
 
 

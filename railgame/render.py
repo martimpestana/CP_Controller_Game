@@ -67,7 +67,7 @@ def apply_theme(colours: dict[str, tuple[int, int, int]]) -> None:
 
 
 def train_kind(train: Train) -> str:
-    """"R" or "IR", from the train's name."""
+    """The train type ("R", "IR", "M" or "H"), from the train's name."""
     return train.name.split()[0]
 
 
@@ -79,9 +79,8 @@ class Renderer:
     def __init__(self, sim: Simulation, train_skins: dict[str, str] | None = None):
         self.sim = sim
         self.skins = train_skins or dict(skins.DEFAULT_SKINS)
-        self.layout = Layout(
-            sim.line, (S(40), S(TOP_BAR + 120), S(PANEL_X - 80), S(HEIGHT - TOP_BAR - 250)), ui.scale()
-        )
+        box = sim.line.geo.map_box or (40, TOP_BAR + 120, PANEL_X - 80, HEIGHT - TOP_BAR - 250)
+        self.layout = Layout(sim.line, tuple(S(v) for v in box), ui.scale())
         self.gap = self.layout.track_gap
         self.f_small = font(13)
         self.f_text = font(15)
@@ -148,23 +147,7 @@ class Renderer:
         surf.fill(BG)
         pygame.draw.rect(surf, LAND, SR(0, TOP_BAR, PANEL_X, HEIGHT - TOP_BAR))
 
-        # The sea follows the shape of the line, a little to the south.
-        coast = []
-        island = []
-        pos = line.west_edge - 3000
-        while pos <= line.east_edge + 3000:
-            x, y = lay.point(pos)
-            nx, ny = lay.normal(pos)
-            coast.append((x - nx * S(45), y - ny * S(45)))
-            wave = 10 * math.sin(pos / 2500)
-            if line.west_edge + 2000 <= pos <= line.east_edge - 3000:
-                island.append((x - nx * S(90 + wave), y - ny * S(90 + wave)))
-            pos += 250
-        coast = [(0, coast[0][1] + S(20))] + coast + [(S(PANEL_X), coast[-1][1] - S(60))]
-        pygame.draw.polygon(surf, SEA, coast + [(S(PANEL_X), S(HEIGHT)), (0, S(HEIGHT))])
-        ui.thick_lines(surf, SAND, island, S(5))
-        label = self.f_small.render("Atlantic Ocean", True, OCEAN_TEXT)
-        surf.blit(label, (S(PANEL_X // 2 - 40), S(HEIGHT - 40)))
+        self._draw_water(surf)
 
         # Track
         ui.thick_lines(surf, TRACK, lay.main_track(), S(4))
@@ -173,12 +156,63 @@ class Renderer:
                 ui.thick_lines(surf, TRACK, lay.loop_track(st), S(4))
 
         # Where the line continues off the map
-        west = lay.point(line.west_edge)
-        east = lay.point(line.east_edge)
-        surf.blit(self.f_small.render("← Loulé", True, MAP_MUTED), (west[0], west[1] - S(30)))
-        text = self.f_small.render("V. R. S. António →", True, MAP_MUTED)
-        surf.blit(text, (east[0] - text.get_width(), east[1] - S(30)))
+        geo = line.geo
+        self._edge_label(surf, line.west_edge, -1, geo.start_label)
+        self._edge_label(surf, line.east_edge, 1, geo.end_label)
         self.background = surf
+
+    def _edge_label(self, surf, pos: float, outwards: int, name: str) -> None:
+        """Label where the line leaves the map, with an arrow pointing the way it goes."""
+        lay = self.layout
+        end = lay.point(pos)
+        inner = lay.point(pos - outwards * 1500)
+        dx, dy = end[0] - inner[0], end[1] - inner[1]
+        if abs(dx) >= abs(dy):
+            arrow = "→" if dx > 0 else "←"
+        else:
+            arrow = "↓" if dy > 0 else "↑"
+        text = f"{name} {arrow}" if arrow == "→" else f"{arrow} {name}"
+        label = self.f_small.render(text, True, MAP_MUTED)
+        nx, ny = lay.normal(pos)
+        x, y = end[0] + nx * S(26), end[1] + ny * S(26)
+        rect = label.get_rect(center=(x, y))
+        rect.clamp_ip(pygame.Rect(S(4), S(TOP_BAR + 4), S(PANEL_X - 8), S(HEIGHT - TOP_BAR - 8)))
+        surf.blit(label, rect)
+
+    def _draw_water(self, surf) -> None:
+        """The sea or the river, following the shape of the line."""
+        line, lay, geo = self.sim.line, self.layout, self.sim.line.geo
+        side = geo.water_side
+        offset = 45 if geo.water == "sea" else 30
+        shore, island = [], []
+        pos = line.west_edge - 4000
+        while pos <= line.east_edge + 4000:
+            x, y = lay.point(pos)
+            nx, ny = lay.normal(pos)
+            shore.append((x + side * nx * S(offset), y + side * ny * S(offset)))
+            wave = 10 * math.sin(pos / 2500)
+            if line.west_edge + 2000 <= pos <= line.east_edge - 3000:
+                island.append((x + side * nx * S(90 + wave), y + side * ny * S(90 + wave)))
+            pos += 250
+        left, top, right, bottom = 0, S(TOP_BAR), S(PANEL_X), S(HEIGHT)
+        if geo.water == "river":
+            ui.thick_lines(surf, SEA, shore, S(18))
+            mid = shore[len(shore) // 2]
+            label = self.f_small.render(geo.water_label, True, OCEAN_TEXT)
+            nx, ny = lay.normal((line.west_edge + line.east_edge) / 2)
+            surf.blit(label, label.get_rect(center=(mid[0] + side * nx * S(26), mid[1] + side * ny * S(26))))
+            return
+        if geo.water_edge == "left":
+            polygon = [(shore[0][0], bottom)] + shore + [(shore[-1][0], top), (left, top), (left, bottom)]
+            label_pos = (S(70), S(HEIGHT // 2))
+        else:
+            polygon = [(left, shore[0][1] + S(20))] + shore + [(right, shore[-1][1] - S(60)), (right, bottom), (left, bottom)]
+            label_pos = (S(PANEL_X // 2), S(HEIGHT - 32))
+        pygame.draw.polygon(surf, SEA, polygon)
+        if geo.barrier_islands:
+            ui.thick_lines(surf, SAND, island, S(5))
+        label = self.f_small.render(geo.water_label, True, OCEAN_TEXT)
+        surf.blit(label, label.get_rect(center=label_pos))
 
     # ------------------------------------------------------------------ drawing a frame
 

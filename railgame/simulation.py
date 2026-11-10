@@ -7,7 +7,7 @@ import math
 from dataclasses import dataclass
 
 from railgame.track import EAST, LOOP_HALF, POINT_OFFSET, Line, Point, Signal, Station
-from railgame.train import ACCELERATION, BRAKING, MAX_SPEED, MIN_DWELL, TRAIN_LENGTH, Stop, Train
+from railgame.train import MIN_DWELL, Stop, Train
 
 STEP = 0.5  # seconds per simulation step (big time jumps are split into steps)
 LOOKAHEAD = 4000.0  # how far ahead a driver looks, in metres
@@ -195,6 +195,10 @@ class Simulation:
                 far_end = first.pos + train.direction * LOOP_HALF
                 if (low - far_end) * train.direction <= 0 or (high - far_end) * train.direction <= 0:
                     return
+        # The new train cannot be held back by a signal before the first station, so that
+        # station must have a free track for it, or the line could lock up for good.
+        if self._station_load(first, loops) >= 2:
+            return
         for s in self.line.signals:
             if s.station is first and s.direction == -train.direction and s.track and s.green:
                 # A train has been given the way out towards us. Only wait if there is a train
@@ -205,10 +209,25 @@ class Simulation:
                     for other in self.running_trains
                 ):
                     return
-        train.pos = edge + train.direction * TRAIN_LENGTH
-        train.speed = MAX_SPEED * 0.8
+        train.pos = edge + train.direction * train.length
+        train.speed = train.max_speed * 0.8
         train.track = 1
         train.state = "running"
+
+    def _station_load(self, station: Station, loops: list[Station]) -> int:
+        """Trains in a crossing station, or on the single line heading straight for it."""
+        count = 0
+        for other in self.running_trains:
+            low, high = other.span
+            if high >= station.pos - POINT_OFFSET and low <= station.pos + POINT_OFFSET:
+                count += 1
+                continue
+            if self.line.loop_station_at(other.pos) is not None:
+                continue  # standing in (or leaving) another station
+            ahead = (station.pos - other.pos) * other.direction
+            if ahead > 0 and not any(0 < (st.pos - other.pos) * other.direction < ahead for st in loops):
+                count += 1
+        return count
 
     # ------------------------------------------------------------------ looking ahead
 
@@ -271,10 +290,11 @@ class Simulation:
             train.speed = 0.0
             return
         # The fastest speed from which the train can still stop in time.
-        safe = math.sqrt(2 * BRAKING * max(0.0, distance - STOP_TOLERANCE / 2))
-        target = min(MAX_SPEED, safe)
+        kind = train.type
+        safe = math.sqrt(2 * kind.braking * max(0.0, distance - STOP_TOLERANCE / 2))
+        target = min(kind.max_speed, safe)
         if train.speed < target:
-            train.speed = min(target, train.speed + ACCELERATION * dt)
+            train.speed = min(target, train.speed + kind.acceleration * dt)
         else:
             train.speed = target
         step = min(train.speed * dt, distance)
@@ -287,16 +307,27 @@ class Simulation:
         self._passed_objects(train, old)
 
         stop = train.pending_departure()
+        while (
+            stop is not None
+            and stop.passing
+            and (train.pos - stop.station.stop_position(train.direction)) * train.direction >= 0
+        ):
+            stop.served = True  # a train that does not stop "departs" as it runs through
+            self._record_departure(train, stop)
+            stop = train.pending_departure()
         if stop is not None and stop.served and stop.departed_at is None:
-            stop.departed_at = self.time
-            if stop is train.stops[-1]:
-                train.final_delay = max(0.0, stop.departed_at - stop.depart)
+            self._record_departure(train, stop)
 
         edge = self.line.east_edge if train.direction == EAST else self.line.west_edge
         if (train.tail - edge) * train.direction > 0:
             train.state = "finished"
             if train.final_delay is None:
                 train.final_delay = train.delay(self.time)
+
+    def _record_departure(self, train: Train, stop: Stop) -> None:
+        stop.departed_at = self.time
+        if stop is train.stops[-1]:
+            train.final_delay = max(0.0, stop.departed_at - stop.depart)
 
     def _dwell(self, train: Train, stop: Stop) -> None:
         train.speed = 0.0

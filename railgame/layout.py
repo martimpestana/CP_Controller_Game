@@ -8,26 +8,9 @@ import math
 
 from railgame.track import LOOP_HALF, POINT_OFFSET, ZONE_HALF, Line, Station
 
-# Approximate coordinates (latitude, longitude) that give the line its shape.
-ALGARVE_SHAPE = [
-    (37.0300, -8.0000),  # towards Loulé
-    (37.0190, -7.9405),  # Faro
-    (37.0225, -7.9180),
-    (37.0250, -7.8800),
-    (37.0285, -7.8420),  # Olhão
-    (37.0380, -7.8000),
-    (37.0505, -7.7580),
-    (37.0540, -7.7440),  # Fuseta
-    (37.0700, -7.7150),
-    (37.0850, -7.6900),
-    (37.1265, -7.6510),  # Tavira
-    (37.1500, -7.6050),  # towards Vila Real de Santo António
-]
-# Which shape point each crossing station sits on.
-ALGARVE_STATION_SHAPE_INDEX = {"FAR": 1, "OLH": 4, "FUS": 7, "TAV": 10}
-
 ZONE_PX = 80  # half width of a station box, in pixels
 TRACK_GAP = 18  # distance between station tracks 1 and 2, in pixels
+MAX_STRETCH = 2.5
 
 
 def _lerp(a, b, t):
@@ -40,16 +23,19 @@ class Layout:
         self.zone_px = ZONE_PX * scale
         self.track_gap = TRACK_GAP * scale
         left, top, width, height = rect
-        raw = [(lon * math.cos(math.radians(37.07)), -lat) for lat, lon in ALGARVE_SHAPE]
+        geo = line.geo
+        mean_lat = sum(lat for lat, _ in geo.shape) / len(geo.shape)
+        raw = [(lon * math.cos(math.radians(mean_lat)), -lat) for lat, lon in geo.shape]
         xs = [p[0] for p in raw]
         ys = [p[1] for p in raw]
-        self.path = [
-            (
-                left + (x - min(xs)) / (max(xs) - min(xs)) * width,
-                top + (y - min(ys)) / (max(ys) - min(ys)) * height,
-            )
-            for x, y in raw
-        ]
+        # Fill the box, but never stretch one direction more than MAX_STRETCH times the other,
+        # so a north-south line does not turn into a zigzag across the screen.
+        sx = width / max(max(xs) - min(xs), 1e-9)
+        sy = height / max(max(ys) - min(ys), 1e-9)
+        sx, sy = min(sx, sy * MAX_STRETCH), min(sy, sx * MAX_STRETCH)
+        ox = left + (width - (max(xs) - min(xs)) * sx) / 2
+        oy = top + (height - (max(ys) - min(ys)) * sy) / 2
+        self.path = [(ox + (x - min(xs)) * sx, oy + (y - min(ys)) * sy) for x, y in raw]
         self.cum = [0.0]
         for a, b in zip(self.path, self.path[1:]):
             self.cum.append(self.cum[-1] + math.dist(a, b))
@@ -57,13 +43,35 @@ class Layout:
         # Anchors: (metres along the line, pixels along the drawn path).
         anchors = [(line.west_edge, 0.0), (line.east_edge, self.cum[-1])]
         self.station_px: dict[str, float] = {}
-        for st in line.stations:
-            if st.has_loop:
-                d = self.cum[ALGARVE_STATION_SHAPE_INDEX[st.code]]
-                self.station_px[st.code] = d
-                anchors.append((st.pos - ZONE_HALF, d - self.zone_px))
-                anchors.append((st.pos + ZONE_HALF, d + self.zone_px))
+        loops = sorted((st for st in line.stations if st.has_loop), key=lambda st: st.pos)
+        spread = self._spread_stations([self.cum[geo.station_shape_index[st.code]] for st in loops])
+        for st, d in zip(loops, spread):
+            self.station_px[st.code] = d
+            anchors.append((st.pos - ZONE_HALF, d - self.zone_px))
+            anchors.append((st.pos + ZONE_HALF, d + self.zone_px))
         self.anchors = sorted(anchors)
+
+    def _spread_stations(self, wanted: list[float]) -> list[float]:
+        """Move station boxes along the line just enough that they never overlap."""
+        gap = 2 * self.zone_px + 40 * self.zone_px / ZONE_PX
+        ends = 30 * self.zone_px / ZONE_PX
+        d = list(wanted)
+        for _ in range(50):
+            moved = False
+            for i in range(len(d) - 1):
+                short = gap - (d[i + 1] - d[i])
+                if short > 0.5:
+                    d[i] -= short / 2
+                    d[i + 1] += short / 2
+                    moved = True
+            low, high = self.zone_px + ends, self.cum[-1] - self.zone_px - ends
+            for i in range(len(d)):
+                clamped = max(low, min(high, d[i]))
+                moved |= abs(clamped - d[i]) > 0.5
+                d[i] = clamped
+            if not moved:
+                break
+        return d
 
     # ------------------------------------------------------------------ basic geometry
 
@@ -86,7 +94,10 @@ class Layout:
         return a[-1][1] + (pos - a[-1][0]) * (a[-1][1] - a[-2][1]) / (a[-1][0] - a[-2][0])
 
     def frame(self, st: Station):
-        """Centre, direction along the track and direction 'north' for a station box."""
+        """Centre, direction along the track and direction 'north' for a station box.
+
+        The box is the straight line between the two ends of its piece of the drawn path, so
+        where the line bends at a station the box is a little shorter than zone_px each way."""
         d = self.station_px[st.code]
         a = self._path_at(d - self.zone_px)
         b = self._path_at(d + self.zone_px)
@@ -97,7 +108,9 @@ class Layout:
 
     def local(self, st: Station, along_m: float, offset_px: float) -> tuple[float, float]:
         (cx, cy), (ux, uy), (nx, ny) = self.frame(st)
-        along = along_m * self.zone_px / ZONE_HALF
+        a = self._path_at(self.station_px[st.code] - self.zone_px)
+        half = math.dist(a, (cx, cy))
+        along = along_m * half / ZONE_HALF
         return (cx + ux * along + nx * offset_px, cy + uy * along + ny * offset_px)
 
     # ------------------------------------------------------------------ public helpers
