@@ -52,7 +52,7 @@ LAND_EDGE = (104, 122, 146)
 
 # Design-pixel layout of the screen.
 MAP_RECT = (12, 68, WIDTH - 24, 380)
-TRACK_Y = 330
+TRACK_Y = 360  # track height at Faro; the line climbs towards Tavira
 TRACK_GAP = 50
 REQUESTS_RECT = (12, 460, 820, 248)
 NEXT_RECT = (844, 460, WIDTH - 856, 248)
@@ -231,19 +231,21 @@ class Renderer:
         screen.blit(self._map_bg[1], (S(MAP_RECT[0]), S(MAP_RECT[1])))
         first, last = line.stations[0].name, line.stations[-1].name
         self._text(screen, f"{line.name} · {first} – {last}", (S(28), S(80)), self.f_title, TEXT)
-        self._text(screen, "← Loulé", (S(20), S(TRACK_Y + 46)), self.f_small, MUTED)
-        self._text(screen, "V. R. S. António →", (S(WIDTH - 20), S(TRACK_Y + 46)), self.f_small, MUTED, "topright")
         for st in line.stations:
             if not st.has_loop:
                 continue
             box = m.station_box(st)
             pygame.draw.rect(screen, STATION_BG, SR(*box), border_radius=S(10))
             xl, xr = m.x(st.pos - LOOP_HALF), m.x(st.pos + LOOP_HALF)
-            for y in (TRACK_Y - TRACK_GAP - 12, TRACK_Y + 8):  # platforms
+            ty = m.station_y(st)
+            for y in (ty - TRACK_GAP - 12, ty + 8):  # platforms
                 pygame.draw.rect(screen, PLATFORM, SR(xl + 6, y, xr - xl - 12, 6), border_radius=S(3))
             self._text(screen, st.name, (S(box[0] + box[2] / 2), S(box[1] + 10)), self.f_title, WHITE, "midtop")
-            self._text(screen, "1", (S(xl + 10), S(TRACK_Y + 16)), self.f_small, MUTED)
-            self._text(screen, "2", (S(xl + 10), S(TRACK_Y - TRACK_GAP - 28)), self.f_small, MUTED)
+            self._text(screen, "1", (S(xl + 10), S(ty + 16)), self.f_small, MUTED)
+            self._text(screen, "2", (S(xl + 10), S(ty - TRACK_GAP - 28)), self.f_small, MUTED)
+        west_y, east_y = m.y(line.west_edge), m.y(line.east_edge)
+        self._text(screen, "← Loulé", (S(20), S(west_y - 34)), self.f_small, MUTED)
+        self._text(screen, "V.R.S.A. →", (S(WIDTH - 20), S(east_y - 34)), self.f_small, MUTED, "topright")
 
     def _make_map_background(self) -> pygame.Surface:
         """The panel behind the track: land, the Ria Formosa with its sand islands, the
@@ -256,10 +258,16 @@ class Renderer:
             return (S(x - mx), S(y - my))
 
         bottom = my + mh
-        xs = range(mx, mx + mw + 9, 8)
-        coast = [(x, TRACK_Y + 62 + 4 * math.sin(x / 150) + 2.5 * math.sin(x / 47 + 1)) for x in xs]
-        islands_y = [(x, TRACK_Y + 82 + 3 * math.sin(x / 210 + 2)) for x in xs]
-        # Lagoon from the coast down; the ocean is drawn over it below the islands.
+        m = self.map
+        xs = list(range(mx, mx + mw + 9, 8))
+
+        def smooth(x, reach=70):  # the track's height, smoothed so the coast has no steps
+            samples = [m.base_y(x + d) for d in range(-reach, reach + 1, 10)]
+            return sum(samples) / len(samples)
+
+        coast = [(x, smooth(x) + 52 + 2.5 * math.sin(x / 47 + 1)) for x in xs]
+        islands_y = [(x, y + 18 + 3 * math.sin(x / 90)) for x, y in coast]
+        # Land is the panel itself; the lagoon starts at the shore and the ocean past the islands.
         pygame.draw.polygon(surf, LAGOON, [P(*c) for c in coast] + [P(mx + mw + 8, bottom), P(mx, bottom)])
         pygame.draw.polygon(surf, SEA, [P(x, y + 4) for x, y in islands_y] + [P(mx + mw + 8, bottom), P(mx, bottom)])
         # Sand islands of the Ria Formosa, broken by the inlets (barras).
@@ -268,18 +276,22 @@ class Renderer:
             pts = [(x, y) for x, y in islands_y if a + 14 <= x <= b - 14]
             if len(pts) > 1:
                 ui.thick_lines(surf, SAND, [P(x, y + 2) for x, y in pts], S(5))
-        # A few waves out at sea.
-        for i, (wx, wy) in enumerate([(150, 432), (420, 438), (700, 430), (960, 436), (1180, 431), (290, 442)]):
-            arc = [P(wx + dx, wy + 2 * math.sin(dx / 4)) for dx in range(0, 26, 2)]
-            ui.thick_lines(surf, SEA_LINE, arc, S(2))
+        # A few waves out at sea, kept below the islands.
+        for wx, dy in [(560, 30), (760, 26), (880, 52), (980, 34), (700, 58), (1060, 66)]:
+            wy = smooth(wx) + 52 + 18 + dy
+            if wy < bottom - 6:
+                arc = [P(wx + dx, wy + 2 * math.sin(dx / 4)) for dx in range(0, 26, 2)]
+                ui.thick_lines(surf, SEA_LINE, arc, S(2))
         cap = self.f_small.render("Ria Formosa", True, (88, 130, 140))
-        surf.blit(cap, P(540, TRACK_Y + 64))
+        surf.blit(cap, cap.get_rect(midleft=P(530, smooth(530) + 52 + 10)))
         cap = self.f_small.render("O c e a n o   A t l â n t i c o", True, (70, 104, 136))
-        surf.blit(cap, cap.get_rect(center=P(mx + mw / 2, TRACK_Y + 104)))
+        surf.blit(cap, cap.get_rect(center=P(860, smooth(860) + 52 + 44)))
 
-        # Inset: Portugal, with the line we are playing on.
-        ix, iy, iw, ih = WIDTH - 124, 76, 106, 114
-        pygame.draw.rect(surf, SEA, (*P(ix, iy), S(iw), S(ih)), border_radius=S(8))
+        # Inset: Portugal, with the line we are playing on, out in the ocean off Tavira.
+        ix, iw, ih = WIDTH - 124, 106, 114
+        iy = bottom - ih - 6
+        pygame.draw.rect(surf, (13, 33, 54), (*P(ix, iy), S(iw), S(ih)), border_radius=S(8))
+        pygame.draw.rect(surf, SEA_LINE, (*P(ix, iy), S(iw), S(ih)), max(1, S(1)), border_radius=S(8))
         to_screen = geography.fit(geography.PORTUGAL, (ix + 40, iy + 6, iw - 46, ih - 12))
         outline = [P(*to_screen(lat, lon)) for lat, lon in geography.PORTUGAL]
         pygame.draw.polygon(surf, LAND, outline)
@@ -299,7 +311,7 @@ class Renderer:
 
     def _draw_track(self, screen) -> None:
         line, m = self.sim.line, self.map
-        ui.thick_lines(screen, TRACK, [_sp(m.point(line.west_edge)), _sp(m.point(line.east_edge))], S(4))
+        ui.thick_lines(screen, TRACK, [_sp(p) for p in m.profile], S(4))
         for st in line.stations:
             if st.has_loop:
                 pts = [_sp(m.point(pos, 2)) for pos in range(int(st.pos - 600), int(st.pos + 601), 20)]
@@ -347,7 +359,7 @@ class Renderer:
             x, y = _sp(m.point(st.pos))
             ui.circle(screen, BG, (x, y), S(8))
             ui.circle(screen, MUTED, (x, y), S(5))
-            self._text(screen, st.name, (int(x), S(TRACK_Y - 30)), self.f_small, MUTED, "midbottom")
+            self._text(screen, st.name, (int(x), int(y - S(14))), self.f_small, MUTED, "midbottom")
 
     # ------------------------------------------------------------------ trains
 
