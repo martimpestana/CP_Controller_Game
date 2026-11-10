@@ -15,6 +15,12 @@ uv run main.py   # play
 uv run pytest    # run the tests
 ```
 
+### Windows: desktop shortcut with the game icon
+
+After `uv sync`, double-click `windows\make_shortcut.bat` once. It puts a **CP Controller**
+shortcut with the game's icon on the Desktop. The shortcut gets the latest version with
+`git pull` (when git is installed) and then starts the game.
+
 ## Play in the browser
 
 Every push to `main` builds a browser version with [pygbag](https://pypi.org/project/pygbag/)
