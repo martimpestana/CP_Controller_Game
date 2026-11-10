@@ -1,8 +1,8 @@
 import pytest
 
-from railgame.levels import LEVELS, build_level, clock, make_timetable, TrainPlan
+from railgame.levels import all_levels, build_level, clock, make_timetable, TrainPlan
 from railgame.simulation import Simulation
-from railgame.track import EAST, LOOP_HALF, WEST, algarve_faro_tavira
+from railgame.track import EAST, LINES, LOOP_HALF, WEST, algarve_faro_tavira
 from railgame.train import Stop, Train
 
 
@@ -137,16 +137,18 @@ def test_new_train_waits_while_edge_section_is_busy():
     assert arriving.state == "waiting"
 
 
-@pytest.mark.parametrize("info", LEVELS, ids=lambda info: f"level{info.number}")
+@pytest.mark.parametrize("info", all_levels(), ids=lambda info: f"{info.line}{info.number}")
 def test_levels_build_and_timetables_are_in_order(info):
-    _, sim = build_level(info.number)
+    _, sim = build_level(info.line, info.number)
     assert len(sim.trains) == len(info.trains)
     for train in sim.trains:
         times = [t for stop in train.stops for t in (stop.arrive, stop.depart)]
         assert times == sorted(times)
         halts = sum(1 for st in sim.line.stations if not st.has_loop)
-        expected = len(sim.line.stations) - (0 if train.name.startswith("R ") else halts)
+        stops = train.type.stops
+        expected = len(sim.line.stations) - (0 if stops == "all" else halts)
         assert len(train.stops) == expected
+        assert all(stop.passing for stop in train.stops) == (stops == "none")
 
 
 def careful_player_move(sim):
@@ -198,10 +200,10 @@ def careful_player_move(sim):
         sim.toggle_signal(request.target_id)
 
 
-@pytest.mark.parametrize("number", [1, 2, 3, 4])
-def test_careful_player_passes_level(number):
-    _, sim = build_level(number)
-    for _ in range(4 * 3600):
+@pytest.mark.parametrize("info", all_levels(), ids=lambda info: f"{info.line}{info.number}")
+def test_careful_player_passes_level(info):
+    _, sim = build_level(info.line, info.number)
+    for _ in range(5 * 3600):
         if sim.over:
             break
         careful_player_move(sim)
@@ -311,4 +313,49 @@ def test_new_train_waits_while_a_train_has_the_way_out_towards_it():
     sim = Simulation(line, [leaving, arriving], 0, 180)
     sim.toggle_signal("TAV-E2")
     sim.advance(0.5)
+    assert arriving.state == "waiting"
+
+
+def test_freight_train_runs_through_stations_without_stopping():
+    line = algarve_faro_tavira()
+    train = make_timetable(line, TrainPlan("M 1", EAST, "08:00"))
+    assert train.length > 300 and train.max_speed < 25
+    sim = Simulation(line, [train], clock("08:00"), 180)
+    for s in sim.line.signals:
+        s.green = s.direction == EAST and s.track in (None, 1)
+    stopped_in_station = False
+    for _ in range(4 * 3600):
+        if sim.over:
+            break
+        sim.advance(1)
+        for s in sim.line.signals:  # keep the way clear, as a player would
+            if s.direction == EAST and s.track in (None, 1):
+                s.green = True
+        if train.state == "running" and train.speed == 0 and sim.line.loop_station_at(train.pos):
+            stopped_in_station = True
+    assert train.state == "finished"
+    assert not stopped_in_station
+    assert all(stop.departed_at is not None for stop in train.stops)
+    assert train.final_delay == 0
+
+
+def test_steam_train_stays_longer_at_pinhao():
+    line = LINES["douro"]()
+    train = make_timetable(line, TrainPlan("H 1", EAST, "10:00"))
+    dwell = {stop.station.code: stop.depart - stop.arrive for stop in train.stops}
+    assert dwell["PIN"] > dwell["TUA"] > 0
+    assert "COV" not in dwell  # it does not stop at the small halts
+
+
+def test_new_train_waits_while_the_first_station_is_full():
+    line = algarve_faro_tavira()
+    waiting = [
+        Train("A", WEST, 0, [], pos=300, state="running"),
+        Train("B", EAST, 0, [], pos=-300, track=2, state="running"),
+    ]
+    arriving = make_timetable(line, TrainPlan("IN", EAST, "00:00"))
+    for t in waiting:
+        t.speed = 0
+    sim = Simulation(line, [*waiting, arriving], 0, 180)
+    sim.advance(1)
     assert arriving.state == "waiting"

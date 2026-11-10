@@ -1,4 +1,4 @@
-"""Train skins: how each type of train (R, IR) looks on the map.
+"""Train skins: how each type of train (R, IR, M, H) looks on the map.
 
 Every type has six skins. "real" is how the trains look in real life; the others are just for
 fun. Whatever the skin, a thin line under each carriage keeps the colour of the train's
@@ -48,8 +48,8 @@ DEFAULT_SKINS = {kind: SKINS[kind][0][0] for kind in TRAIN_TYPES}
 EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern"): (6, 6), ("R", "future"): (12, 8), ("IR", "future"): (12, 8), ("IR", "modern"): (13, 9),
           ("R", "gem"): (5, 5), ("IR", "gem"): (5, 5), ("R", "vintage"): (2, 0), ("IR", "vintage"): (3, 0)}
 
-# How many carriages each type has on the map.
-CARS = {"R": 2, "IR": 3}
+# How many carriages each type has on the map (M and H only have their real look).
+CARS = {"R": 2, "IR": 3, "M": 6, "H": 4}
 
 
 class Car:
@@ -140,6 +140,52 @@ def _real_ir(car, front, rear, stripe, t, index) -> None:
     _windows(car, False, rear, (40, 52, 70), o0=-3.5, o1=0.5, step=4.5)
     if rear:
         car.dot((230, 60, 50), L - 1.4, 4.2, 0.8)
+
+
+# Freight (M) and the historic steam train (H) always look like the real thing.
+CONTAINERS = [(40, 110, 170), (190, 60, 50), (230, 170, 40), (60, 140, 90), (210, 210, 214)]
+
+
+def _real_m(car, front, rear, stripe, t, index) -> None:
+    # A freight diesel locomotive pulling container flats and cement wagons.
+    L = car.length
+    if index == 0:
+        _base(car, (52, 60, 72), (34, 38, 46), stripe)
+        car.band(-1, 1.5, 0.5, L - 0.5, (240, 196, 40))  # yellow band
+        car.band(-4.5, -0.5, 1.5, 6, (40, 52, 70))  # cab window
+        for x in range(9, int(L) - 2, 3):
+            car.line((24, 28, 34), x, -3.5, x, -1.5, 0.6)
+        car.dot((255, 236, 150), 1.4, 4.2, 0.9)
+        return
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(3.5, 5.2, 0, L, (70, 66, 62))  # the flat underframe
+    if index % 2:
+        colour = CONTAINERS[index % len(CONTAINERS)]
+        car.band(-5.5, 3.5, 0.8, L - 0.8, colour)
+        for x in range(3, int(L) - 1, 2):
+            car.line(_shade(colour, 0.75), x, -5, x, 3, 0.4)  # corrugated sides
+    else:
+        grey = (176, 172, 164)
+        car.poly(grey, [(1, 3.5), (2.5, -5), (L - 2.5, -5), (L - 1, 3.5)])  # cement hopper
+        car.band(-5, -4, 3, L - 3, _shade(grey, 0.7))
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 4.2, 0.8)
+
+
+def _real_h(car, front, rear, stripe, t, index) -> None:
+    # The Douro historic train: a black steam locomotive and old brown wooden coaches.
+    L = car.length
+    if index == 0:
+        _vintage_ir(car, front, rear, stripe, t, 0)
+        return
+    _base(car, (120, 62, 36), (60, 44, 34), stripe)
+    for x in range(2, int(L) - 1, 4):
+        car.line((96, 48, 28), x, -4, x, 5, 0.5)  # wooden planks
+    _windows(car, False, rear, (236, 214, 150), o0=-3.2, o1=-0.4, step=4.0, size=2.4)
+    car.line((214, 180, 96), 0.5, 1.5, L - 0.5, 1.5, 0.5)
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 3.8, 0.8)
 
 
 # ---------------------------------------------------------------------- vintage / steam
@@ -672,6 +718,8 @@ DRAW = {
     ("IR", "dragon"): _fire_dragon,
     ("R", "gem"): _gem_r,
     ("IR", "gem"): _gem_ir,
+    ("M", "real"): _real_m,
+    ("H", "real"): _real_h,
 }
 
 

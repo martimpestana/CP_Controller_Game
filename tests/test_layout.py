@@ -5,24 +5,35 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
+import pytest
 
 from railgame.layout import Layout
-from railgame.track import algarve_faro_tavira
+from railgame.track import LINES
 
 
-def test_track_is_continuous_on_screen():
-    line = algarve_faro_tavira()
+@pytest.mark.parametrize("key", LINES)
+def test_track_is_continuous_on_screen(key):
+    line = LINES[key]()
     layout = Layout(line, (40, 100, 800, 400))
     pts = layout.main_track()
     biggest_jump = max(math.dist(a, b) for a, b in zip(pts, pts[1:]))
     assert biggest_jump < 10
 
 
-def test_track_two_joins_track_one_at_the_points():
-    line = algarve_faro_tavira()
+@pytest.mark.parametrize("key", LINES)
+def test_track_two_joins_track_one_at_the_points(key):
+    line = LINES[key]()
     layout = Layout(line, (40, 100, 800, 400))
     for p in line.points:
         assert math.dist(layout.point(p.pos, 1), layout.point(p.pos, 2)) < 0.5
+
+
+@pytest.mark.parametrize("key", LINES)
+def test_station_boxes_never_overlap(key):
+    line = LINES[key]()
+    layout = Layout(line, line.geo.map_box or (40, 176, 820, 414))
+    centres = sorted(layout.station_px.values())
+    assert all(b - a >= 2 * layout.zone_px for a, b in zip(centres, centres[1:]))
 
 
 def test_game_draws_a_frame():

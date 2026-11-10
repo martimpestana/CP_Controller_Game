@@ -4,11 +4,49 @@ from dataclasses import dataclass, field
 
 from railgame.track import EAST, Station
 
-TRAIN_LENGTH = 150.0  # metres
+TRAIN_LENGTH = 150.0  # metres (a regional train)
 MAX_SPEED = 25.0  # metres per second (90 km/h)
 ACCELERATION = 0.6  # m/s²
 BRAKING = 0.8  # m/s²
 MIN_DWELL = 30.0  # seconds a train always stays at a platform
+
+
+@dataclass(frozen=True)
+class TrainType:
+    """What kind of train it is. The first word of a train's name picks its type ("M 52101")."""
+
+    code: str
+    name: str
+    max_speed: float = MAX_SPEED  # m/s
+    length: float = TRAIN_LENGTH  # metres
+    acceleration: float = ACCELERATION
+    braking: float = BRAKING
+    stops: str = "all"  # "all" stations, only the crossing stations ("loops"), or "none" (passes through)
+    dwell_loop: float = 60  # scheduled stop at a crossing station, in seconds
+    dwell_halt: float = 30  # scheduled stop at a halt
+    long_stops: tuple[str, ...] = ()  # station codes where the train stays longer
+    long_dwell: float = 0
+
+
+# To add a new kind of train (Intercidades, Alfa Pendular...), add it here.
+TRAIN_TYPES = {
+    "R": TrainType("R", "Regional"),
+    "IR": TrainType("IR", "Inter-Regional", stops="loops"),
+    "M": TrainType(
+        "M", "Freight", max_speed=17.0, length=450.0, acceleration=0.25, braking=0.5, stops="none"
+    ),
+    "H": TrainType(
+        "H",
+        "Historic steam train",
+        max_speed=14.0,
+        length=200.0,
+        acceleration=0.3,
+        stops="loops",
+        dwell_loop=90,
+        long_stops=("PIN",),
+        long_dwell=300,
+    ),
+}
 
 
 @dataclass
@@ -19,6 +57,7 @@ class Stop:
     depart: float
     served: bool = False  # passengers are on board and the train is ready to leave
     departed_at: float | None = None
+    passing: bool = False  # the train runs through without stopping (scheduled passing time)
 
 
 @dataclass
@@ -37,8 +76,24 @@ class Train:
     track_changes: list[tuple[float, int]] = field(default_factory=list)
 
     @property
+    def kind(self) -> str:
+        return self.name.split()[0]
+
+    @property
+    def type(self) -> TrainType:
+        return TRAIN_TYPES.get(self.kind, TRAIN_TYPES["R"])
+
+    @property
+    def length(self) -> float:
+        return self.type.length
+
+    @property
+    def max_speed(self) -> float:
+        return self.type.max_speed
+
+    @property
     def tail(self) -> float:
-        return self.pos - self.direction * TRAIN_LENGTH
+        return self.pos - self.direction * self.length
 
     @property
     def span(self) -> tuple[float, float]:
@@ -56,8 +111,9 @@ class Train:
         return self.track_changes[0][1] ^ 3 if self.track_changes else self.track
 
     def next_stop(self) -> Stop | None:
+        """The next station where the train really stops (it runs through passing stops)."""
         for stop in self.stops:
-            if not stop.served:
+            if not stop.served and not stop.passing:
                 return stop
         return None
 
