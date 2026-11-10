@@ -1,6 +1,8 @@
 """The game window: menu, playing a level and the result screen."""
 
 import asyncio
+import sys
+from pathlib import Path
 
 import pygame
 
@@ -355,12 +357,31 @@ class Game:
             self.button(pygame.Rect(box.x + S(300), y, S(200), S(44)), "Try again", "retry", primary=True)
 
 
+ICON_FILE = Path(__file__).parent / "assets" / "icon.png"
+
+
+def set_window_icon() -> None:
+    """Show the game's own icon on the window and in the taskbar instead of Python's."""
+    if sys.platform == "win32":
+        try:  # without this, Windows groups the window under python.exe and shows its icon
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("CPController.Game")
+        except (AttributeError, OSError):
+            pass
+    try:
+        pygame.display.set_icon(pygame.image.load(str(ICON_FILE)))
+    except (pygame.error, FileNotFoundError):
+        pass  # the game still runs without an icon
+
+
 async def main() -> None:
     make_dpi_aware()
     pygame.init()
     # In the browser the page scales the canvas to fit, so draw at a fixed, sharp size.
     set_scale(BROWSER_SCALE if IN_BROWSER else best_scale())
     pygame.display.set_caption("CP Controller")
+    set_window_icon()
     screen = pygame.display.set_mode((S(WIDTH), S(HEIGHT)))
     await Game(screen).run()
     pygame.quit()
