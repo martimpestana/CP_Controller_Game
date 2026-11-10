@@ -43,7 +43,7 @@ DEFAULT_SKINS = {kind: SKINS[kind][0][0] for kind in TRAIN_TYPES}
 
 # How far a skin reaches beyond the front and the rear of the train (heads, fire, tails),
 # in design pixels, so the menu can fit the whole picture in its card.
-EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern"): (5, 5), ("IR", "modern"): (5, 5),
+EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern"): (6, 6), ("IR", "modern"): (13, 9),
           ("R", "gem"): (5, 5), ("IR", "gem"): (5, 5), ("R", "vintage"): (2, 0), ("IR", "vintage"): (3, 0)}
 
 # How many carriages each type has on the map.
@@ -191,33 +191,104 @@ def _vintage_ir(car, front, rear, stripe, t, index) -> None:
 # ---------------------------------------------------------------------- modern
 
 
-def _modern(car, front, rear, stripe, t, index, glow) -> None:
-    L = car.length
-    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
-    car.band(-6, 6, 0, L, (46, 50, 58))
-    car.band(-6, -4.8, 0.5, L - 0.5, (90, 96, 108))
-    car.band(-3.6, 0.8, 0.5 if not front else 5, L - (0.5 if not rear else 5), (24, 32, 44))  # long glass
-    car.band(1.6, 2.6, 0, L, glow)  # LED strip
-    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
-    for x in range(6, int(L) - 3, 6):
-        car.line((60, 70, 86), x, -3.6, x, 0.8, 0.4)
-    if front:  # pointed nose
-        car.poly(INK, [(5.5, -7.5), (-5, 1), (-5, 3), (5.5, 7.5)])
-        car.poly((46, 50, 58), [(5, -6), (-4, 1.2), (-4, 2.6), (5, 6)])
-        car.poly((24, 32, 44), [(5, -3.6), (0.5, -0.4), (5, 0.8)])
-        car.dot((230, 250, 255), -2.6, 2.6, 0.9)
-    if rear:
-        car.poly(INK, [(L - 5.5, -7.5), (L + 5, 1), (L + 5, 3), (L - 5.5, 7.5)])
-        car.poly((46, 50, 58), [(L - 5, -6), (L + 4, 1.2), (L + 4, 2.6), (L - 5, 6)])
-        car.dot((255, 60, 60), L + 2.6, 2.6, 0.8)
+def _pantograph(car, l, t) -> None:
+    """The arm on the roof that touches the overhead wire."""
+    car.line(INK, l - 2.5, -6, l, -9.5, 0.9)
+    car.line(INK, l + 2.5, -6, l, -9.5, 0.9)
+    car.line((150, 156, 166), l - 2.5, -6, l, -9.5, 0.45)
+    car.line((150, 156, 166), l + 2.5, -6, l, -9.5, 0.45)
+    car.line(INK, l - 3, -9.8, l + 3, -9.8, 0.9)
+    car.line((200, 206, 216), l - 3, -9.8, l + 3, -9.8, 0.45)
+    if math.sin(t * 13 + l) > 0.92:  # the odd spark from the wire
+        car.dot((180, 220, 255), l + 1, -10.3, 0.7)
 
 
 def _modern_r(car, front, rear, stripe, t, index) -> None:
-    _modern(car, front, rear, stripe, t, index, (120, 255, 150))
+    """R: a modern electric unit, like a new metro: white and graphite, one long window, doors
+    marked with green lights, a glowing strip, and a big rounded windscreen."""
+    L = car.length
+    white, graphite, roof = (234, 238, 242), (52, 58, 68), (176, 182, 192)
+    glass, glass_light, led = (24, 32, 46), (70, 96, 130), (110, 255, 160)
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-6, 6, 0, L, white)
+    car.band(-6, -4.8, 0.3, L - 0.3, roof)
+    car.band(2.8, 6, 0, L, graphite)
+    g0, g1 = (5.0 if front else 1.2), L - (5.0 if rear else 1.2)
+    car.band(-4, 0.9, g0, g1, glass)
+    # Reflections running across the glass.
+    x = g0 + ((t * 6 + index * 5) % 9.0)
+    while x < g1 - 1:
+        car.poly(glass_light, [(x, -4), (x + 1.4, -4), (x - 0.4, 0.9), (x - 1.8, 0.9)])
+        x += 9.0
+    # Doors: a lighter outline through the window band and the skirt, with a green light above.
+    for d in (L * 0.3, L * 0.72):
+        car.band(-4, 2.8, d - 1.6, d + 1.6, (205, 210, 218))
+        car.band(-3.4, 0.6, d - 1.1, d - 0.15, glass)
+        car.band(-3.4, 0.6, d + 0.15, d + 1.1, glass)
+        car.dot(led, d, -4.4, 0.45)
+    car.band(1.5, 2.3, 0, L, led)
+    car.line(_shade(led, 0.55), 0, 2.6, L, 2.6, 0.3)
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if index == 0:
+        _pantograph(car, L * 0.6, t)
+    for end, sign in ((front, 1), (rear, -1)):
+        if not end:
+            continue
+        x0 = 0 if sign == 1 else L
+
+        def P(dl, o):
+            return (x0 - sign * dl, o)
+
+        nose = [P(0, -6), P(2, -5.6), P(3.6, -3.8), P(4.3, -0.5), P(4.1, 3), P(3.2, 5.4), P(0, 6)]
+        car.poly(INK, [P(0, -7.5), P(2.6, -7), P(4.8, -4.4), P(5.6, -0.5), P(5.4, 3.4), P(4.2, 7), P(0, 7.5)])
+        car.poly(white, nose)
+        car.poly(graphite, [P(0, 2.8), P(4.15, 2.8), P(4.1, 3), P(3.2, 5.4), P(0, 6)])
+        car.poly(glass, [P(0, -5), P(2, -4.6), P(3.3, -3), P(3.8, -0.3), P(3.7, 0.9), P(0, 0.9)])
+        car.poly(glass_light, [P(1.2, -4.8), P(2.2, -4.4), P(1, 0.9), P(0.2, 0.9)])
+        light = (240, 250, 255) if sign == 1 else (255, 60, 60)
+        car.band(1.5, 2.3, *sorted((x0, x0 - sign * 4.1)), led)
+        car.dot(light, x0 - sign * 3.4, 3.8, 0.7)
+        car.dot(light, x0 - sign * 2.3, 4.2, 0.55)
 
 
 def _modern_ir(car, front, rear, stripe, t, index) -> None:
-    _modern(car, front, rear, stripe, t, index, (255, 90, 200))
+    """IR: a high-speed train: white, with a deep blue swoosh and a pink line, small windows and a
+    long pointed nose with the cab window on top."""
+    L = car.length
+    white, blue, pink = (242, 244, 248), (28, 58, 150), (240, 70, 170)
+    glass = (26, 34, 50)
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-6, 6, 0, L, white)
+    car.band(-6, -5, 0.3, L - 0.3, (196, 202, 212))
+    car.band(2.2, 6, 0, L, blue)
+    car.band(1.2, 1.7, 0, L, pink)
+    _windows(car, False, False, glass, o0=-3.6, o1=-0.9, step=3.6, size=2.4, start=2.0, end=L - 2.0)
+    # A shine sliding along the body.
+    s = ((t * 0.7 + index * 0.25) % 1.5 - 0.25) * L
+    if 0 < s < L - 2:
+        car.poly((255, 255, 255), [(s, -4.6), (s + 1.2, -4.6), (s + 0.4, -4.2), (s - 0.8, -4.2)])
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if index == 1:
+        _pantograph(car, L * 0.5, t)
+    if front:
+        top = [(0, -6), (-3, -5.4), (-6, -4), (-9, -1.6), (-11.5, 1.4)]
+        bottom = [(-11.5, 2.6), (-9, 4.6), (-5, 5.7), (0, 6)]
+        car.poly(INK, [(l * 1.08 + 0.2, o * 1.2) for l, o in top + bottom])
+        car.poly(white, top + bottom)
+        car.poly(blue, [(0, 2.2), (-6, 2.9), (-11.5, 2.6), (-9, 4.6), (-5, 5.7), (0, 6)])
+        car.poly(pink, [(0, 1.2), (-6, 2.0), (-11, 2.1), (-6, 2.5), (0, 1.7)])
+        car.poly(glass, [(-1.5, -5.2), (-4.5, -4.3), (-7, -2.6), (-6.6, -1.6), (-1.5, -2.6)])
+        car.poly((90, 120, 160), [(-2.5, -4.9), (-3.6, -4.5), (-2.6, -2.8), (-1.6, -2.7)])
+        car.dot((240, 250, 255), -10.2, 2.0, 0.7)
+    if rear:
+        top = [(L, -6), (L + 3, -5.2), (L + 6, -3), (L + 8, 0.2)]
+        bottom = [(L + 8, 1.6), (L + 5, 4.8), (L, 6)]
+        car.poly(INK, [(L + (l - L) * 1.1 + 0.2, o * 1.2) for l, o in top + bottom])
+        car.poly(white, top + bottom)
+        car.poly(blue, [(L, 2.2), (L + 7.6, 1.6), (L + 5, 4.8), (L, 6)])
+        car.poly(pink, [(L, 1.2), (L + 6, 0.9), (L, 1.7)])
+        car.poly(glass, [(L + 1.2, -5.1), (L + 3.6, -4.3), (L + 5, -2.8), (L + 1.2, -2.6)])
+        car.dot((255, 60, 60), L + 7, 1.2, 0.6)
 
 
 # ---------------------------------------------------------------------- dragons
