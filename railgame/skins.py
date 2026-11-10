@@ -27,14 +27,14 @@ SKINS = {
         ("real", "Real"),
         ("vintage", "Vintage"),
         ("modern", "Modern"),
-        ("dragon", "Dragon"),
+        ("dragon", "Jade dragon"),
         ("gem", "Diamond"),
     ],
     "IR": [
         ("real", "Real"),
         ("vintage", "Steam"),
         ("modern", "Modern"),
-        ("dragon", "Dragon"),
+        ("dragon", "Fire dragon"),
         ("gem", "Ruby"),
     ],
 }
@@ -218,99 +218,296 @@ def _modern_ir(car, front, rear, stripe, t, index) -> None:
 # ---------------------------------------------------------------------- dragons
 
 
-def _dragon(car, front, rear, stripe, t, index, body, belly, spikes) -> None:
+def _lerp_colour(c0, c1, f: float):
+    return tuple(round(a + (b - a) * f) for a, b in zip(c0, c1))
+
+
+def _jade_dragon(car, front, rear, stripe, t, index) -> None:
+    """R: a long, wavy eastern dragon in jade and gold, with a flame mane, whiskers and antlers,
+    chasing a glowing pearl."""
     L = car.length
-    dark = _shade(body, 0.65)
+    jade, jade_dark, jade_light = (46, 160, 112), (24, 104, 74), (120, 220, 170)
+    gold, gold_dark, mane = (244, 202, 84), (190, 140, 40), (236, 84, 56)
+    phase = index * 2.4 + t * 2.0
+
+    def centre(l):  # the body snakes up and down along the carriage
+        return 0.4 + 1.3 * math.sin(l / 7.0 + phase)
+
+    steps = [i * L / 16 for i in range(17)]
+    top = [(l, centre(l) - 4.6) for l in steps]
+    bottom = [(l, centre(l) + 4.6) for l in steps]
+    belly_top = [(l, centre(l) + 1.6) for l in steps]
+    # Mane: little flames along the back, flickering.
+    for i, l in enumerate(steps[1:-1:2]):
+        h = 3.2 + 1.2 * math.sin(t * 7 + i * 1.7 + index)
+        c = centre(l) - 4.4
+        car.poly(INK, [(l - 1.8, c + 0.6), (l + 0.6, c - h - 0.8), (l + 1.8, c + 0.6)])
+        car.poly(mane, [(l - 1.2, c + 0.4), (l + 0.5, c - h), (l + 1.2, c + 0.4)])
+        car.poly(gold, [(l - 0.4, c + 0.3), (l + 0.3, c - h * 0.5), (l + 0.6, c + 0.3)])
+    car.poly(INK, [(l, o - 1) for l, o in top] + [(l, o + 1) for l, o in reversed(bottom)])
+    car.poly(jade, top + list(reversed(bottom)))
+    car.poly(gold, belly_top + list(reversed(bottom)))
+    for l in steps[1:-1]:  # belly plates
+        car.line(gold_dark, l, centre(l) + 1.8, l, centre(l) + 4.3, 0.4)
+    # Scales: rows of little half-moons, light on top and dark below.
+    for row, (off, colour) in enumerate(((-3.0, jade_light), (-0.6, jade_dark))):
+        x = 1.0 + row * 1.5
+        while x < L - 1.5:
+            c = centre(x) + off
+            car.poly(colour, [(x, c), (x + 0.75, c + 1.2), (x + 1.5, c)])
+            x += 3.0
+    car.band(5.8, 7.0, 0.5, L - 0.5, stripe)
+    if index % 2 == 0:  # a golden claw under some carriages
+        c = centre(L * 0.5) + 4.2
+        for dx in (-1.2, 0, 1.2):
+            car.poly(INK, [(L * 0.5 + dx - 0.6, c), (L * 0.5 + dx, c + 2.6), (L * 0.5 + dx + 0.6, c)])
+            car.poly(gold, [(L * 0.5 + dx - 0.35, c), (L * 0.5 + dx, c + 2.1), (L * 0.5 + dx + 0.35, c)])
+    if front:
+        c = centre(0)
+        sway = math.sin(t * 2.5)
+        # Antlers, branching back.
+        for base, tip, branch in (((-2, c - 4), (4, c - 11), (1.5, c - 9.5)), ((-4, c - 3.5), (0, c - 10), (-1.5, c - 8.5))):
+            car.line(INK, *base, *tip, 1.4)
+            car.line(gold, *base, *tip, 0.8)
+            car.line(gold, branch[0], branch[1], branch[0] - 1.6, branch[1] - 1.8, 0.6)
+        head = [(1, c - 4.6), (-3, c - 5.4), (-7, c - 4), (-11, c - 2.2), (-12.5, c - 0.5), (-12, c + 1),
+                (-8, c + 1.6), (-11.5, c + 3.2), (-9, c + 4.6), (-3, c + 4.8), (1, c + 4.6)]
+        car.poly(INK, [(l * 1.08 - 0.3, o * 1.12) for l, o in head])
+        car.poly(jade, head)
+        car.poly(gold, [(-8, c + 1.6), (-11.5, c + 3.2), (-9, c + 4.6), (-3, c + 4.8), (-3, c + 2.4)])  # jaw
+        for i, o in enumerate((-4.5, -2, 0.5, 3)):  # a flame mane behind the head
+            reach = 4.5 + 1.2 * math.sin(t * 6 + i)
+            car.poly(INK, [(-1.5, c + o - 1.6), (-1.5 + reach + 0.8, c + o - 2.2), (-1.5, c + o + 1.6)])
+            car.poly(mane, [(-1.2, c + o - 1.2), (-1.2 + reach, c + o - 1.8), (-1.2, c + o + 1.2)])
+        car.poly((255, 255, 240), [(-10.8, c + 1.4), (-10.2, c + 2.6), (-9.6, c + 1.5)])  # fang
+        car.dot(INK, -5.6, c - 2.3, 1.5)
+        car.dot((230, 40, 40), -5.6, c - 2.3, 1.1)
+        car.dot((255, 230, 120), -5.9, c - 2.6, 0.45)
+        car.dot(INK, -11.6, c - 1.2, 0.45)  # nostril
+        # Long whiskers, waving.
+        for o0, bend in ((-0.4, -1), (0.6, 1)):
+            pts = [(-11.5 - i * 1.6, c + o0 + bend * (i * 0.5) + sway * i * 0.35) for i in range(6)]
+            pts = [(-11.5, c + o0)] + [(l + i * 2.4, o) for i, (l, o) in enumerate(pts)]
+            for p0, p1 in zip(pts, pts[1:]):
+                car.line(INK, *p0, *p1, 0.9)
+                car.line(gold, *p0, *p1, 0.55)
+        # Beard.
+        car.poly(gold_dark, [(-6, c + 4.6), (-5, c + 8 + sway * 0.5), (-4, c + 4.6)])
+        # The pearl it is chasing.
+        glow = 0.5 + 0.5 * math.sin(t * 4)
+        px, po = -19 - 1.5 * math.sin(t * 1.3), c - 3 + math.sin(t * 2)
+        car.dot(_lerp_colour((120, 160, 255), (220, 240, 255), glow), px, po, 2.6 + 0.4 * glow)
+        car.dot((255, 255, 255), px, po, 1.6)
+        car.dot((255, 255, 255), px - 0.6, po - 0.6, 0.6)
+    if rear:
+        c = centre(L)
+        wag = 2.0 * math.sin(t * 3 + index)
+        tail = [(L - 0.5, c - 4.4), (L + 5, c - 2.5 + wag * 0.5), (L + 10, c - 1 + wag), (L + 14, c - 1.5 + wag),
+                (L + 10, c + 1 + wag), (L + 5, c + 2.6 + wag * 0.5), (L - 0.5, c + 4.4)]
+        car.poly(INK, [(l, o * 1.15) for l, o in tail])
+        car.poly(jade, tail)
+        for i in range(4):  # flame tuft at the end of the tail
+            a = -0.8 + i * 0.55
+            tip = (L + 14 + 4 * math.cos(a), c - 1.5 + wag + 4 * math.sin(a))
+            car.poly(mane, [(L + 12.5, c - 2.4 + wag), tip, (L + 12.5, c - 0.6 + wag)])
+
+
+def _fire_dragon(car, front, rear, stripe, t, index) -> None:
+    """IR: a heavy western dragon, crimson and black, with armour plates, a bat wing,
+    curled horns, a spade-tipped tail and a big breath of fire."""
+    L = car.length
+    red, red_dark, red_light = (176, 30, 36), (96, 12, 22), (226, 70, 60)
+    belly, belly_dark, horn = (226, 170, 104), (170, 116, 64), (236, 224, 196)
+    plate = (54, 18, 26)
+    flap = math.sin(t * 2.2)
+    if index == 1:  # the wing, over the middle carriage
+        root, elbow = (L * 0.25, -6), (L * 0.45, -19 - 2.5 * flap)
+        fingers = [(L * 0.05, -12 - flap), (L * 0.4, -10 - flap), (L * 0.8, -14 - 1.5 * flap), (L + 4, -10 - flap)]
+        membrane = [root, elbow, (L + 6, -16 - 2.5 * flap), (L + 4, -10 - flap), (L * 0.8, -8.5), (L * 0.4, -7), (L * 0.05, -8)]
+        car.poly(INK, [(l, o - 0.8) for l, o in membrane])
+        car.poly((120, 20, 30), membrane)
+        car.poly(red_light, [elbow, (L + 6, -16 - 2.5 * flap), (L + 4, -13.5 - flap)])
+        car.line(INK, *root, *elbow, 1.2)
+        car.line(horn, *root, *elbow, 0.6)
+        for f in fingers:
+            car.line(red_dark, *elbow, *f, 0.6)
+        car.poly(horn, [elbow, (elbow[0] - 1.2, elbow[1] - 2), (elbow[0] + 0.6, elbow[1] + 0.2)])  # claw
+    # Back plates.
+    x = 1.5
+    while x < L - 1:
+        car.poly(INK, [(x - 2.2, -5.6), (x + 0.4, -10), (x + 2.2, -5.6)])
+        car.poly(plate, [(x - 1.6, -5.8), (x + 0.3, -9), (x + 1.6, -5.8)])
+        x += 4.2
     car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
-    # Spikes along the back.
-    for x in range(2, int(L) - 1, 4):
-        car.poly(INK, [(x - 2, -6), (x, -10.5), (x + 2, -6)])
-        car.poly(spikes, [(x - 1.3, -6), (x, -9.3), (x + 1.3, -6)])
-    car.band(-6, 6, 0, L, body)
-    car.band(2.5, 6, 0, L, belly)
-    for x in range(1, int(L), 3):  # belly plates
-        car.line(_shade(belly, 0.8), x, 2.5, x, 6, 0.5)
-    # Scales: rows of little arcs.
-    for row, o in enumerate((-4.2, -1.6, 1.0)):
-        for x in range(1 + (row % 2) * 2, int(L) - 1, 4):
-            car.poly(dark, [(x, o), (x + 1.5, o + 1.6), (x + 3, o)])
+    car.band(-6, 6, 0, L, red)
+    car.band(-6, -4.4, 0, L, red_dark)
+    # Scales: a lattice of diamonds with a lit upper edge.
+    for row, o in enumerate((-3.6, -1.2)):
+        x = 0.5 + row * 1.6
+        while x < L - 2.5:
+            car.poly(red_dark, [(x, o + 1.1), (x + 1.6, o), (x + 3.2, o + 1.1), (x + 1.6, o + 2.2)])
+            car.line(red_light, x, o + 1.1, x + 1.6, o, 0.4)
+            x += 3.2
+    car.band(2.0, 6, 0, L, belly)
+    for xx in range(1, int(L), 2):
+        car.line(belly_dark, xx, 2.0, xx, 6, 0.4)
     car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
-    if front:  # the head, sticking out in front, with an eye, horns and a bit of fire
-        car.poly(INK, [(1, -7.5), (-4, -7), (-11, -3), (-12, 1.5), (-9, 4.5), (-2, 6), (1, 7.5)])
-        car.poly(body, [(0.5, -6.5), (-4, -6), (-10, -2.6), (-10.8, 1.2), (-8.5, 3.6), (-2, 5), (0.5, 6.5)])
-        car.poly(belly, [(-10.8, 1.2), (-8.5, 3.6), (-2, 5), (0.5, 5.2), (0.5, 2.6), (-6, 2)])
-        car.line(INK, -10.5, 1.4, -3, 2.4, 0.6)  # mouth
-        for x in (-9, -7, -5):
-            car.poly((240, 240, 230), [(x, 1.6), (x + 0.7, 3), (x + 1.4, 1.8)])  # teeth
-        car.poly(INK, [(-3, -6.2), (0, -12), (0.5, -6)])
-        car.poly(spikes, [(-2.4, -6.2), (-0.2, -10.6), (0, -6.2)])  # horn
-        car.dot((255, 220, 40), -5.5, -3, 1.4)
-        car.dot(INK, -5.8, -3, 0.6)
-        car.dot(INK, -10.4, -1.6, 0.4)  # nostril
-        flame = 0.5 + 0.5 * math.sin(t * 9 + index)
-        if flame > 0.35:
-            car.poly((255, 140, 30), [(-11.5, 0), (-15 - 3 * flame, -1.5), (-14 - 2 * flame, 1), (-16 - 4 * flame, 2.5), (-11.5, 2.4)])
-            car.poly((255, 230, 90), [(-11.5, 0.6), (-13.5 - 2 * flame, 0.6), (-11.5, 1.8)])
-    if rear:  # a tail curling off the back
-        sway = 1.5 * math.sin(t * 3 + index)
-        car.poly(INK, [(L - 1, -4), (L + 6, -2 + sway), (L + 12, -5 + sway), (L + 11, -1 + sway), (L + 6, 3 + sway), (L - 1, 5)])
-        car.poly(body, [(L - 1, -3), (L + 6, -1 + sway), (L + 10.5, -3.8 + sway), (L + 10, -1.2 + sway), (L + 6, 2 + sway), (L - 1, 4)])
-        car.poly(spikes, [(L + 9, -3.5 + sway), (L + 13, -7 + sway), (L + 11, -2 + sway)])
-
-
-def _dragon_r(car, front, rear, stripe, t, index) -> None:
-    _dragon(car, front, rear, stripe, t, index, (60, 150, 70), (210, 200, 120), (230, 220, 160))
-
-
-def _dragon_ir(car, front, rear, stripe, t, index) -> None:
-    _dragon(car, front, rear, stripe, t, index, (190, 40, 40), (240, 170, 80), (250, 210, 120))
+    if index == 0:  # front legs with black talons
+        for lx in (L * 0.35, L * 0.7):
+            car.poly(INK, [(lx - 2.2, 4), (lx + 2.2, 4), (lx + 1.6, 8.6), (lx - 2.6, 8.6)])
+            car.poly(red_dark, [(lx - 1.6, 4), (lx + 1.6, 4), (lx + 1, 8), (lx - 2, 8)])
+            for dx in (-2.4, -1.2, 0):
+                car.poly(horn, [(lx + dx, 8), (lx + dx - 0.8, 9.6), (lx + dx + 0.4, 8)])
+    if front:
+        jaw_open = 1.0 + 0.8 * (0.5 + 0.5 * math.sin(t * 5))
+        head = [(1, -6.2), (-3, -7), (-8, -5.5), (-12, -3), (-13.5, -0.5), (-13, 0.6), (-6, 1.2)]
+        jaw = [(-6, 1.6), (-12.5, 1.6 + jaw_open), (-11.5, 3.6 + jaw_open), (-4, 5.6), (1, 6.2), (1, 1)]
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.12) for l, o in head + [(1, 1.5)]])
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.1) for l, o in jaw])
+        car.poly(red, head + [(1, 1.5)])
+        car.poly(belly, jaw)
+        car.poly((60, 10, 14), [(-6, 1.2), (-13, 0.6), (-12.5, 1.6 + jaw_open), (-6, 1.6)])  # mouth
+        for x in (-12, -10.4, -8.8):  # teeth
+            car.poly((255, 255, 240), [(x, 0.6), (x + 0.5, 1.8), (x + 1, 0.7)])
+        car.poly(red_dark, [(-3, -7), (-8, -5.5), (-5, -4.5)])  # brow
+        # Two horns curling back over the head.
+        for base, mid, tip in (((-4, -6.6), (0, -11), (5, -11.5)), ((-6.5, -5.8), (-4, -10), (0.5, -12.5))):
+            car.line(INK, *base, *mid, 1.6)
+            car.line(INK, *mid, *tip, 1.2)
+            car.line(horn, *base, *mid, 1.0)
+            car.line(horn, *mid, *tip, 0.6)
+        car.dot(INK, -7.2, -3.4, 1.3)
+        car.dot((255, 170, 30), -7.2, -3.4, 0.95)
+        car.line(INK, -7.2, -4.2, -7.2, -2.6, 0.35)  # slit pupil
+        car.dot(INK, -12.6, -1.6, 0.5)
+        # Fire: three layers, flickering.
+        f = 0.6 + 0.4 * math.sin(t * 11) * math.sin(t * 7.3)
+        reach = 10 + 6 * f
+        base_o = 1.6 + jaw_open / 2
+        car.poly((200, 40, 20), [(-13, base_o - 1.6), (-13 - reach, base_o - 4 * f), (-14 - reach * 1.15, base_o + 0.5), (-13 - reach, base_o + 4 * f), (-13, base_o + 1.6)])
+        car.poly((255, 140, 30), [(-13, base_o - 1), (-13 - reach * 0.8, base_o - 2.4 * f), (-13.5 - reach * 0.95, base_o + 0.3), (-13 - reach * 0.8, base_o + 2.4 * f), (-13, base_o + 1)])
+        car.poly((255, 240, 150), [(-13, base_o - 0.5), (-13 - reach * 0.5, base_o), (-13, base_o + 0.6)])
+        for i in range(3):  # sparks
+            s = (t * 3 + i * 0.33) % 1.0
+            car.dot((255, 200, 80), -13 - reach * (0.6 + 0.6 * s), base_o + (i - 1) * 3 * s, 0.5 * (1 - s) + 0.2)
+    if rear:
+        wag = 2.5 * math.sin(t * 2.6 + index)
+        tail = [(L - 0.5, -5), (L + 6, -3 + wag * 0.4), (L + 12, -1 + wag), (L + 12, 1.4 + wag), (L + 6, 3 + wag * 0.4), (L - 0.5, 5)]
+        car.poly(INK, [(l, o * 1.2) for l, o in tail])
+        car.poly(red, tail)
+        car.poly(belly, [(L - 0.5, 2), (L + 6, 1.6 + wag * 0.4), (L + 12, 1 + wag), (L + 12, 1.4 + wag), (L + 6, 3 + wag * 0.4), (L - 0.5, 5)])
+        for x in (L + 2, L + 6):
+            car.poly(plate, [(x - 1.2, -3.2 + wag * (x - L) / 15), (x, -6 + wag * (x - L) / 15), (x + 1.2, -2.8 + wag * (x - L) / 15)])
+        spade = [(L + 11, 0.2 + wag), (L + 13.5, -3.5 + wag), (L + 18.5, 0.2 + wag), (L + 13.5, 3.9 + wag)]
+        car.poly(INK, [(l + (0.6 if l > L + 15 else 0), o * 1.1 - 0.1 * wag) for l, o in spade])
+        car.poly(plate, spade)
+        car.poly(red_dark, [(L + 12.5, 0.2 + wag), (L + 13.5, -2 + wag), (L + 16.5, 0.2 + wag)])
 
 
 # ---------------------------------------------------------------------- precious stones
 
 
-def _gem(car, front, rear, stripe, t, index, light, mid, dark) -> None:
+def _facet_colour(palette, seed: int, light: float):
+    """One of the palette's tones, picked by seed, brightened by light (0..1)."""
+    base = palette[(seed * 7 + seed // 3) % len(palette)]
+    return _lerp_colour(base, (255, 255, 255), max(0.0, min(1.0, light)))
+
+
+def _gem(car, front, rear, stripe, t, index, palette, metal, metal_dark, studs) -> None:
+    """A carriage cut like a gemstone: rows of facets in many tones, set in a metal frame with
+    small stones along it. A band of light sweeps along the train and sparkles come and go."""
     L = car.length
     car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
-    car.band(-6, 6, 0, L, mid)
-    # Facets: a row of diamonds, lit from the top left.
-    step = 5.0
-    x = 0.0
-    while x < L - 0.1:
-        x1 = min(L, x + step)
-        m = (x + x1) / 2
-        car.poly(light, [(x, -6), (m, -6), (x, 0)])
-        car.poly(_shade(light, 0.85), [(m, -6), (x1, -6), (x1, 0)])
-        car.poly(dark, [(x, 0), (m, 6), (x, 6)])
-        car.poly(_shade(dark, 1.25), [(x1, 0), (x1, 6), (m, 6)])
-        car.line(_shade(light, 1.1), x, 0, m, -6, 0.4)
-        car.line(_shade(dark, 0.8), m, 6, x1, 0, 0.4)
-        x = x1
+    car.band(-6, 6, 0, L, palette[2])
+    sweep = ((t * 0.45 + index * 0.18) % 1.6 - 0.3) * L  # where the band of light is now
+
+    def light(l, o):
+        d = abs((l + o * 0.6) - sweep)
+        return max(0.0, 0.75 - d / 5.0) + (0.12 if o < -1 else 0.0)
+
+    # Facets: each segment is a brilliant cut seen from the side (crown on top, pavilion below).
+    seg = 5.5
+    n = max(1, round((L - 1) / seg))
+    seg = (L - 1) / n
+    for i in range(n):
+        x0 = 0.5 + i * seg
+        x1, m = x0 + seg, x0 + seg / 2
+        table, girdle = -2.6, 0.4
+        crown = [
+            [(x0, -5.2), (m, -5.2), (m - seg * 0.18, table)],
+            [(m, -5.2), (x1, -5.2), (m + seg * 0.18, table)],
+            [(x0, -5.2), (m - seg * 0.18, table), (x0, girdle)],
+            [(x1, -5.2), (m + seg * 0.18, table), (x1, girdle)],
+            [(m - seg * 0.18, table), (m + seg * 0.18, table), (m, -5.2)],
+            [(x0, girdle), (m - seg * 0.18, table), (m + seg * 0.18, table), (x1, girdle)],
+        ]
+        pavilion = [
+            [(x0, girdle), (m, girdle), (m, 4.2)],
+            [(m, girdle), (x1, girdle), (m, 4.2)],
+            [(x0, girdle), (m, 4.2), (x0, 4.2)],
+            [(x1, girdle), (x1, 4.2), (m, 4.2)],
+        ]
+        for j, tri in enumerate(crown + pavilion):
+            cl = sum(p[0] for p in tri) / len(tri)
+            co = sum(p[1] for p in tri) / len(tri)
+            shade = (0.35 if j < 2 else 0.18) if j < len(crown) else -0.05
+            colour = _facet_colour(palette, i * 11 + j + index * 5, light(cl, co) + max(0.0, shade) * 0.6)
+            if shade < 0:
+                colour = _shade(colour, 0.82)
+            car.poly(colour, tri)
+        car.line(_lerp_colour(palette[0], (255, 255, 255), 0.6), x0, girdle, x1, girdle, 0.3)
+        car.line(_lerp_colour(palette[0], (255, 255, 255), 0.5), m - seg * 0.18, table, m + seg * 0.18, table, 0.3)
+    # Metal setting: rails top and bottom, prongs, and a small stone in each prong.
+    car.band(-6, -5.0, 0, L, metal)
+    car.band(4.2, 5.2, 0, L, metal)
+    car.line(metal_dark, 0, -5.0, L, -5.0, 0.3)
+    car.line(metal_dark, 0, 5.2, L, 5.2, 0.3)
+    for i in range(n + 1):
+        x = 0.5 + i * seg
+        car.poly(metal, [(x - 0.9, -5.0), (x, -3.9), (x + 0.9, -5.0)])
+        car.poly(metal, [(x - 0.9, 4.2), (x, 3.2), (x + 0.9, 4.2)])
+        stud = studs[(i + index) % len(studs)]
+        car.dot(metal_dark, x, 4.7, 0.9)
+        car.dot(stud, x, 4.7, 0.65)
+        car.dot((255, 255, 255), x - 0.2, 4.5, 0.2)
     if front:
-        car.poly(INK, [(0.5, -7.5), (-4.5, 0), (0.5, 7.5)])
-        car.poly(light, [(0, -6), (-3.5, 0), (0, 0)])
-        car.poly(dark, [(0, 0), (-3.5, 0), (0, 6)])
+        car.poly(INK, [(0.5, -7.5), (-5, -2), (-5, 2), (0.5, 7.5)])
+        car.poly(metal, [(0, -6), (-4, -1.6), (-4, 1.6), (0, 6)])
+        car.poly(_facet_colour(palette, 1, 0.5), [(0, -4.8), (-3, -1.2), (0, -0.2)])
+        car.poly(_facet_colour(palette, 3, 0.1), [(0, -0.2), (-3, -1.2), (-3, 1.2), (0, 4.4)])
+        car.dot((255, 255, 255), -3.6, 2.6, 0.9)
     if rear:
-        car.poly(INK, [(L - 0.5, -7.5), (L + 4.5, 0), (L - 0.5, 7.5)])
-        car.poly(_shade(light, 0.85), [(L, -6), (L + 3.5, 0), (L, 0)])
-        car.poly(dark, [(L, 0), (L + 3.5, 0), (L, 6)])
-    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
-    # Sparkles that come and go.
-    for i, (sx, so) in enumerate(((0.25, -3.5), (0.6, -1.5), (0.85, -4.2))):
-        s = math.sin(t * 4 + i * 2.1 + index * 1.3)
-        if s > 0.4:
-            r = (s - 0.4) * 4
-            cx = sx * L
-            car.line((255, 255, 255), cx - r, so, cx + r, so, 0.5)
-            car.line((255, 255, 255), cx, so - r, cx, so + r, 0.5)
+        car.poly(INK, [(L - 0.5, -7.5), (L + 5, -2), (L + 5, 2), (L - 0.5, 7.5)])
+        car.poly(metal, [(L, -6), (L + 4, -1.6), (L + 4, 1.6), (L, 6)])
+        car.poly(_facet_colour(palette, 2, 0.3), [(L, -4.8), (L + 3, -1.2), (L, -0.2)])
+        car.poly(_facet_colour(palette, 4, 0.0), [(L, -0.2), (L + 3, -1.2), (L + 3, 1.2), (L, 4.4)])
+        car.dot((255, 70, 70), L + 3.6, 2.6, 0.8)
+    car.band(5.4, 6.8, 0.5, L - 0.5, stripe)
+    # Sparkles: four-pointed stars, some with a touch of rainbow fire.
+    fire = [(255, 255, 255), (255, 240, 170), (190, 230, 255), (255, 200, 240)]
+    for i in range(4):
+        s = math.sin(t * 3.3 + i * 1.9 + index * 2.3)
+        if s > 0.5:
+            r = (s - 0.5) * 6
+            cx = ((i * 0.27 + index * 0.13) % 0.9 + 0.05) * L
+            co = (-3.8, -1.2, 2.4, -2.8)[i]
+            colour = fire[(i + index) % len(fire)]
+            car.line(colour, cx - r, co, cx + r, co, 0.45)
+            car.line(colour, cx, co - r, cx, co + r, 0.45)
+            car.line(colour, cx - r * 0.4, co - r * 0.4, cx + r * 0.4, co + r * 0.4, 0.3)
+            car.line(colour, cx - r * 0.4, co + r * 0.4, cx + r * 0.4, co - r * 0.4, 0.3)
 
 
 def _gem_r(car, front, rear, stripe, t, index) -> None:
-    _gem(car, front, rear, stripe, t, index, (235, 250, 255), (170, 220, 240), (110, 170, 205))  # diamond
+    # Diamond: icy blue-white facets in platinum, with small sapphires.
+    palette = [(246, 252, 255), (190, 226, 250), (120, 180, 230), (70, 130, 200), (160, 210, 245), (40, 90, 170)]
+    _gem(car, front, rear, stripe, t, index, palette, (214, 220, 230), (130, 140, 156), [(60, 110, 230), (240, 250, 255)])
 
 
 def _gem_ir(car, front, rear, stripe, t, index) -> None:
-    _gem(car, front, rear, stripe, t, index, (255, 150, 170), (215, 40, 80), (140, 15, 50))  # ruby
+    # Ruby: deep reds in gold, with small emeralds and diamonds.
+    palette = [(255, 110, 130), (220, 30, 64), (176, 10, 44), (120, 4, 34), (244, 64, 90), (84, 0, 24)]
+    _gem(car, front, rear, stripe, t, index, palette, (236, 196, 90), (160, 120, 40), [(40, 190, 110), (240, 250, 255)])
 
 
 DRAW = {
@@ -320,8 +517,8 @@ DRAW = {
     ("IR", "vintage"): _vintage_ir,
     ("R", "modern"): _modern_r,
     ("IR", "modern"): _modern_ir,
-    ("R", "dragon"): _dragon_r,
-    ("IR", "dragon"): _dragon_ir,
+    ("R", "dragon"): _jade_dragon,
+    ("IR", "dragon"): _fire_dragon,
     ("R", "gem"): _gem_r,
     ("IR", "gem"): _gem_ir,
 }
