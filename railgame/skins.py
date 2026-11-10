@@ -1,6 +1,6 @@
 """Train skins: how each type of train (R, IR) looks on the map.
 
-Every type has five skins. "real" is how the trains look in real life; the others are just for
+Every type has six skins. "real" is how the trains look in real life; the others are just for
 fun. Whatever the skin, a thin line under each carriage keeps the colour of the train's
 direction (blue eastbound, orange westbound), so the map stays easy to read.
 
@@ -27,6 +27,7 @@ SKINS = {
         ("real", "Real"),
         ("vintage", "Vintage"),
         ("modern", "Modern"),
+        ("future", "Futuristic"),
         ("dragon", "Jade dragon"),
         ("gem", "Diamond"),
     ],
@@ -34,6 +35,7 @@ SKINS = {
         ("real", "Real"),
         ("vintage", "Steam"),
         ("modern", "Modern"),
+        ("future", "Futuristic"),
         ("dragon", "Fire dragon"),
         ("gem", "Ruby"),
     ],
@@ -43,7 +45,7 @@ DEFAULT_SKINS = {kind: SKINS[kind][0][0] for kind in TRAIN_TYPES}
 
 # How far a skin reaches beyond the front and the rear of the train (heads, fire, tails),
 # in design pixels, so the menu can fit the whole picture in its card.
-EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern"): (6, 6), ("IR", "modern"): (13, 9),
+EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern"): (6, 6), ("R", "future"): (12, 8), ("IR", "future"): (12, 8), ("IR", "modern"): (13, 9),
           ("R", "gem"): (5, 5), ("IR", "gem"): (5, 5), ("R", "vintage"): (2, 0), ("IR", "vintage"): (3, 0)}
 
 # How many carriages each type has on the map.
@@ -289,6 +291,77 @@ def _modern_ir(car, front, rear, stripe, t, index) -> None:
         car.poly(pink, [(L, 1.2), (L + 6, 0.9), (L, 1.7)])
         car.poly(glass, [(L + 1.2, -5.1), (L + 3.6, -4.3), (L + 5, -2.8), (L + 1.2, -2.6)])
         car.dot((255, 60, 60), L + 7, 1.2, 0.6)
+
+
+# ---------------------------------------------------------------------- futuristic
+
+
+def _future(car, front, rear, stripe, t, index, neon, accent, fins: bool) -> None:
+    """A maglev floating over the track: no wheels, a dark glossy shell with one long canopy,
+    neon edges that pulse, energy running along the side and a glow underneath."""
+    L = car.length
+    shell, shell_top, canopy = (18, 22, 32), (48, 56, 76), (10, 14, 24)
+    pulse = 0.55 + 0.45 * math.sin(t * 4 + index * 0.8)
+    glow = _lerp_colour(_shade(neon, 0.45), neon, pulse)
+    # Glow under the train: it floats, so there are no wheels, just light.
+    for i, o in enumerate((8.6, 7.8)):
+        car.band(o - 0.35, o + 0.35, 1 + i, L - 1 - i, _shade(neon, 0.35 + 0.3 * i * pulse))
+    car.band(-6.6, 6.6, -0.3, L + 0.3, INK)
+    car.band(-5.6, 5.6, 0, L, shell)
+    car.band(-5.6, -3.6, 0, L, shell_top)
+    # One long tinted canopy with a sharp reflection.
+    c0, c1 = (6.0 if front else 0.0), L - (5.0 if rear else 0.0)
+    car.band(-3.4, -0.4, c0, c1, canopy)
+    car.line(_shade(neon, 0.7), c0, -3.4, c1, -3.4, 0.3)
+    shine = c0 + ((t * 9 + index * 7) % max(1.0, c1 - c0 + 6)) - 3
+    if c0 < shine < c1 - 1.5:
+        car.poly((150, 190, 230), [(shine, -3.4), (shine + 1.5, -3.4), (shine + 0.8, -0.4), (shine - 0.7, -0.4)])
+    # Neon edges, and energy pulses running back along the side.
+    car.band(-5.6, -5.0, 0, L, glow)
+    car.band(4.4, 5.0, 0, L, glow)
+    car.band(1.3, 1.8, 0, L, _shade(accent, 0.6))
+    for i in range(3):
+        x = ((t * 18 + i * L / 3 + index * 4) % L)
+        car.band(1.0, 2.1, x, min(L, x + 1.6), accent)
+    car.band(5.4, 6.4, 0.5, L - 0.5, stripe)
+    if fins and index == 1:  # a blade along the roof
+        car.poly(INK, [(L * 0.25, -5.6), (L * 0.55, -9.5), (L * 0.8, -9.5), (L * 0.75, -5.6)])
+        car.poly(shell_top, [(L * 0.3, -5.6), (L * 0.56, -8.8), (L * 0.77, -8.8), (L * 0.72, -5.6)])
+        car.line(accent, L * 0.56, -8.8, L * 0.77, -8.8, 0.5)
+    if front:
+        top = [(0, -5.6), (-3, -5.2), (-6.5, -3.4), (-9.5, -0.6), (-10.5, 1.6)]
+        bottom = [(-10.5, 2.4), (-8, 4.4), (-4, 5.4), (0, 5.6)]
+        car.poly(INK, [(l * 1.08 + 0.2, o * 1.18) for l, o in top + bottom])
+        car.poly(shell, top + bottom)
+        car.poly(shell_top, [(0, -5.6), (-3, -5.2), (-6.5, -3.4), (-5, -2.6), (0, -3.6)])
+        car.poly(canopy, [(0, -3.4), (-5, -2.6), (-7.6, -0.6), (0, -0.4)])
+        car.line(glow, 0, -5.3, -3, -4.9, 0.6)
+        car.line(glow, -3, -4.9, -6.5, -3.1, 0.6)
+        car.line(glow, -6.5, -3.1, -9.6, -0.2, 0.6)
+        car.line(glow, -4, 5.0, 0, 5.0, 0.6)
+        car.line((240, 255, 255), -10, 1.2, -8, 1.8, 0.7)  # light bar
+        if fins:
+            car.poly(INK, [(-2, 4.6), (-6, 9), (-1, 9), (1, 4.6)])
+            car.poly(accent, [(-1.6, 5), (-5, 8.4), (-1.2, 8.4), (0.6, 5)])
+    if rear:
+        top = [(L, -5.6), (L + 3, -4.8), (L + 6, -2.4), (L + 7, 0.6)]
+        bottom = [(L + 7, 1.4), (L + 5, 4.2), (L, 5.6)]
+        car.poly(INK, [(L + (l - L) * 1.1 + 0.2, o * 1.18) for l, o in top + bottom])
+        car.poly(shell, top + bottom)
+        car.line(glow, L, -5.3, L + 3, -4.6, 0.6)
+        car.line(glow, L + 3, -4.6, L + 6, -2.2, 0.6)
+        car.line((255, 50, 90), L + 6.6, 0.4, L + 5.6, 2.6, 0.7)
+        if fins:
+            car.poly(INK, [(L - 1, -5.6), (L + 4, -11), (L + 6, -11), (L + 4, -4.6)])
+            car.poly(accent, [(L - 0.4, -5.6), (L + 4.2, -10.4), (L + 5.4, -10.4), (L + 3.6, -4.8)])
+
+
+def _future_r(car, front, rear, stripe, t, index) -> None:
+    _future(car, front, rear, stripe, t, index, (0, 230, 255), (140, 255, 250), False)
+
+
+def _future_ir(car, front, rear, stripe, t, index) -> None:
+    _future(car, front, rear, stripe, t, index, (190, 90, 255), (255, 200, 70), True)
 
 
 # ---------------------------------------------------------------------- dragons
@@ -593,6 +666,8 @@ DRAW = {
     ("IR", "vintage"): _vintage_ir,
     ("R", "modern"): _modern_r,
     ("IR", "modern"): _modern_ir,
+    ("R", "future"): _future_r,
+    ("IR", "future"): _future_ir,
     ("R", "dragon"): _jade_dragon,
     ("IR", "dragon"): _fire_dragon,
     ("R", "gem"): _gem_r,

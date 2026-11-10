@@ -263,7 +263,7 @@ class Game:
             s.blit(self.f_head.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE), (S(80), S(y)))
             y += 32
             for i, (sid, name) in enumerate(skins.SKINS[kind]):
-                rect = SR(80 + i * 228, y, 216, 112)
+                rect = SR(80 + i * 190, y, 180, 112)
                 chosen = self.settings.skin(kind) == sid
                 hovered = rect.collidepoint(mouse)
                 pygame.draw.rect(s, render.LAND, rect, border_radius=S(10))
@@ -271,7 +271,7 @@ class Game:
                     pygame.draw.rect(s, BUTTON_ON if chosen else MUTED, rect, S(3), border_radius=S(10))
                 ahead, behind = skins.EXTENT.get((kind, sid), (0, 0))
                 length = skins.CARS[kind] * 25 - 3
-                k = min(2.6, 196 / (length + ahead + behind)) * ui_scale()
+                k = min(2.6, 164 / (length + ahead + behind)) * ui_scale()
                 left = rect.centerx - (length + ahead + behind) * k / 2 + ahead * k
                 skins.draw_preview(s, kind, sid, left, rect.y + S(56), k, EAST_COLOUR, t)
                 label = self.f_text.render(name + ("  ✓" if chosen else ""), True, WHITE if chosen else TEXT)
