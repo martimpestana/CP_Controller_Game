@@ -121,7 +121,13 @@ class Game:
         if self.renderer.restart_button_at(pos):
             self.start_level(self.level_number)
             return
-        obj = self.renderer.object_at(pos)
+        request = self.renderer.request_button_at(pos)
+        if request is not None:
+            # "Do it" on a driver's request flips the signal or points the driver asked about.
+            line = self.sim.line
+            obj = next((o for o in (*line.signals, *line.points) if o.id == request.target_id), None)
+        else:
+            obj = self.renderer.object_at(pos)
         if isinstance(obj, Signal):
             error = self.sim.toggle_signal(obj.id)
         elif isinstance(obj, Point):
