@@ -9,7 +9,7 @@ import math
 
 import pygame
 
-from railgame import ui
+from railgame import skins, ui
 from railgame.layout import Layout
 from railgame.simulation import Request, Simulation
 from railgame.track import EAST, Point, Signal
@@ -39,11 +39,9 @@ CARD = (38, 52, 68)
 BUTTON = (48, 64, 82)
 BUTTON_ON = (70, 120, 200)
 
+OCEAN_TEXT = (90, 130, 150)
+MAP_MUTED = (150, 160, 172)  # small labels on the map
 INK = (8, 10, 14)
-TRAIN_BODY = (232, 236, 242)
-TRAIN_ROOF = (150, 160, 175)
-GLASS = (40, 58, 84)
-GLASS_LIGHT = (120, 170, 220)
 CAR_PX = 22  # length of one carriage on screen, in design pixels
 CAR_GAP_PX = 3
 REQUESTS_BOTTOM = HEIGHT - 300  # the drivers' requests stop here, the next trains start below
@@ -63,6 +61,11 @@ def minutes_text(seconds: float) -> str:
     return f"{seconds / 60:.1f} min"
 
 
+def apply_theme(colours: dict[str, tuple[int, int, int]]) -> None:
+    """Switch the map and panel colours (see themes.py). Takes effect for the next Renderer."""
+    globals().update({name: value for name, value in colours.items() if name in globals()})
+
+
 def train_kind(train: Train) -> str:
     """"R" or "IR", from the train's name."""
     return train.name.split()[0]
@@ -73,8 +76,9 @@ def train_colour(train: Train) -> tuple[int, int, int]:
 
 
 class Renderer:
-    def __init__(self, sim: Simulation):
+    def __init__(self, sim: Simulation, train_skins: dict[str, str] | None = None):
         self.sim = sim
+        self.skins = train_skins or dict(skins.DEFAULT_SKINS)
         self.layout = Layout(
             sim.line, (S(40), S(TOP_BAR + 120), S(PANEL_X - 80), S(HEIGHT - TOP_BAR - 250)), ui.scale()
         )
@@ -159,7 +163,7 @@ class Renderer:
         coast = [(0, coast[0][1] + S(20))] + coast + [(S(PANEL_X), coast[-1][1] - S(60))]
         pygame.draw.polygon(surf, SEA, coast + [(S(PANEL_X), S(HEIGHT)), (0, S(HEIGHT))])
         ui.thick_lines(surf, SAND, island, S(5))
-        label = self.f_small.render("Atlantic Ocean", True, (90, 130, 150))
+        label = self.f_small.render("Atlantic Ocean", True, OCEAN_TEXT)
         surf.blit(label, (S(PANEL_X // 2 - 40), S(HEIGHT - 40)))
 
         # Track
@@ -171,8 +175,8 @@ class Renderer:
         # Where the line continues off the map
         west = lay.point(line.west_edge)
         east = lay.point(line.east_edge)
-        surf.blit(self.f_small.render("← Loulé", True, MUTED), (west[0], west[1] - S(30)))
-        text = self.f_small.render("V. R. S. António →", True, MUTED)
+        surf.blit(self.f_small.render("← Loulé", True, MAP_MUTED), (west[0], west[1] - S(30)))
+        text = self.f_small.render("V. R. S. António →", True, MAP_MUTED)
         surf.blit(text, (east[0] - text.get_width(), east[1] - S(30)))
         self.background = surf
 
@@ -250,50 +254,11 @@ class Renderer:
             prev = cur
         return prev
 
-    def _draw_car(self, screen, a, b, stripe, front: bool, rear: bool) -> None:
-        """One carriage from a (its front end) to b (its rear end), in screen pixels."""
-        ux, uy = b[0] - a[0], b[1] - a[1]
-        length = math.hypot(ux, uy) or 1.0
-        ux, uy = ux / length, uy / length
-        nx, ny = -uy, ux
-        if ny < 0 or (ny == 0 and nx < 0):
-            nx, ny = -nx, -ny  # make n point down the screen, so the roof is always on top
-        k = ui.scale()
-
-        def band(o0, o1, l0, l1, colour):
-            o0, o1, l0, l1 = o0 * k, o1 * k, l0 * k, l1 * k
-            pygame.draw.polygon(
-                screen,
-                colour,
-                [
-                    (a[0] + ux * l0 + nx * o0, a[1] + uy * l0 + ny * o0),
-                    (a[0] + ux * l1 + nx * o0, a[1] + uy * l1 + ny * o0),
-                    (a[0] + ux * l1 + nx * o1, a[1] + uy * l1 + ny * o1),
-                    (a[0] + ux * l0 + nx * o1, a[1] + uy * l0 + ny * o1),
-                ],
-            )
-
-        car_len = length / k
-        band(-7.5, 7.5, -0.5, car_len + 0.5, INK)
-        band(-6, 6, 0, car_len, TRAIN_BODY)
-        band(-6, -4, 1, car_len - 1, TRAIN_ROOF)
-        band(2.5, 6, 0.5, car_len - 0.5, stripe)
-        start, end = (7 if front else 3.0), car_len - (7 if rear else 3.0)
-        pos = start
-        while pos + 3 <= end:
-            band(-3, 1, pos, pos + 3, GLASS)
-            pos += 5
-        if front:
-            band(-4, 1.5, 1, 5, GLASS_LIGHT)
-            ui.circle(screen, (255, 236, 150), (a[0] + ux * 1.5 * k + nx * 4 * k, a[1] + uy * 1.5 * k + ny * 4 * k), 1.6 * k)
-        if rear:
-            band(-4, 1.5, car_len - 5, car_len - 1, GLASS)
-            ui.circle(screen, (230, 60, 50), (b[0] - ux * 1.5 * k + nx * 4 * k, b[1] - uy * 1.5 * k + ny * 4 * k), 1.4 * k)
-
     def _draw_trains(self, screen) -> None:
         line = self.sim.line
         crashed = self.sim.crash or ()
         self.train_boxes = []
+        t = pygame.time.get_ticks() / 1000
         for train in self.sim.trains:
             if train.state != "running":
                 continue
@@ -301,7 +266,9 @@ class Renderer:
             if high < line.west_edge or low > line.east_edge:
                 continue  # completely off the map
             stripe = RED if train in crashed else train_colour(train)
-            cars = 3 if train_kind(train) == "IR" else 2
+            kind = train_kind(train)
+            cars = skins.CARS.get(kind, 2)
+            skin = self.skins.get(kind, "real")
             ends = []
             for i in range(cars):
                 offset = S(i * (CAR_PX + CAR_GAP_PX))
@@ -310,7 +277,7 @@ class Renderer:
                 a, b = ends[i]
                 if i < cars - 1:
                     pygame.draw.line(screen, INK, b, ends[i + 1][0], max(1, S(3)))
-                self._draw_car(screen, a, b, stripe, front=i == 0, rear=i == cars - 1)
+                skins.draw_car(screen, a, b, kind, skin, stripe, i, cars, ui.scale(), t)
             self._draw_train_label(screen, train, ends)
 
     def _draw_train_label(self, screen, train: Train, ends) -> None:
@@ -358,7 +325,7 @@ class Renderer:
                 x, y = lay.point(st.pos)
                 ui.circle(screen, BG, (x, y), S(9))
                 ui.circle(screen, WHITE, (x, y), S(6))
-                label = self.f_small.render(st.name, True, MUTED)
+                label = self.f_small.render(st.name, True, MAP_MUTED)
                 nx, ny = lay.normal(st.pos)
                 lx, ly = x + nx * S(24), y + ny * S(24)
             screen.blit(label, (lx - label.get_width() / 2, ly - label.get_height() / 2))
