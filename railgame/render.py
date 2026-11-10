@@ -1,4 +1,9 @@
-"""Everything that is drawn on the screen during a level."""
+"""Everything that is drawn on the screen during a level.
+
+The map follows the real shape of the line along the coast (see layout.py). Trains are drawn as
+short carriages, and the panel on the right holds the drivers' requests (each with a "Do it"
+button), the trains still to come and a short how-to-play.
+"""
 
 import math
 
@@ -6,9 +11,9 @@ import pygame
 
 from railgame import ui
 from railgame.layout import Layout
-from railgame.simulation import Simulation
+from railgame.simulation import Request, Simulation
 from railgame.track import EAST, Point, Signal
-from railgame.train import TRAIN_LENGTH, Train
+from railgame.train import Train
 from railgame.ui import S, SR, font
 
 WIDTH, HEIGHT = 1280, 720
@@ -34,6 +39,14 @@ CARD = (38, 52, 68)
 BUTTON = (48, 64, 82)
 BUTTON_ON = (70, 120, 200)
 
+INK = (8, 10, 14)
+TRAIN_BODY = (232, 236, 242)
+TRAIN_ROOF = (150, 160, 175)
+GLASS = (40, 58, 84)
+GLASS_LIGHT = (120, 170, 220)
+CAR_PX = 22  # length of one carriage on screen, in design pixels
+CAR_GAP_PX = 3
+REQUESTS_BOTTOM = HEIGHT - 300  # the drivers' requests stop here, the next trains start below
 SIGNAL_SIDE = 14  # pixels between a signal and its track
 
 # Speed buttons in the top bar: (simulated seconds per real second, label).
@@ -48,6 +61,11 @@ def clock_text(seconds: float, with_seconds: bool = False) -> str:
 
 def minutes_text(seconds: float) -> str:
     return f"{seconds / 60:.1f} min"
+
+
+def train_kind(train: Train) -> str:
+    """"R" or "IR", from the train's name."""
+    return train.name.split()[0]
 
 
 def train_colour(train: Train) -> tuple[int, int, int]:
@@ -68,6 +86,8 @@ class Renderer:
         self.f_big = font(34, bold=True)
         self.speed_buttons: list[tuple[pygame.Rect, int]] = []
         self.restart_button: pygame.Rect | None = None
+        self.request_buttons: list[tuple[pygame.Rect, Request]] = []
+        self.train_boxes: list[tuple[pygame.Rect, Train]] = []
         self._prepare_background()
 
     # ------------------------------------------------------------------ positions used for clicks
@@ -101,6 +121,19 @@ class Renderer:
 
     def restart_button_at(self, pos: tuple[int, int]) -> bool:
         return self.restart_button is not None and self.restart_button.collidepoint(pos)
+
+    def request_button_at(self, pos: tuple[int, int]) -> Request | None:
+        """The request whose "Do it" button is at this position, if any."""
+        for rect, request in self.request_buttons:
+            if rect.collidepoint(pos):
+                return request
+        return None
+
+    def train_at(self, pos: tuple[int, int]) -> Train | None:
+        for rect, train in self.train_boxes:
+            if rect.collidepoint(pos):
+                return train
+        return None
 
     # ------------------------------------------------------------------ background (drawn once)
 
@@ -154,6 +187,7 @@ class Renderer:
         self._draw_stations(screen)
         self._draw_top_bar(screen, info, speed)
         self._draw_requests(screen, hover)
+        self._draw_next_trains(screen)
         self._draw_legend(screen)
         self._draw_hover(screen, hover)
         if toast:
@@ -202,42 +236,114 @@ class Renderer:
             if s.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[s.id])
 
+    def _walk_back(self, train: Train, px_dist: float) -> tuple[float, float]:
+        """The point on the drawn track px_dist screen pixels behind the front of the train.
+        Each step uses the track that part of the train is on, so the carriages follow the
+        front through the points instead of jumping across."""
+        prev = self.layout.point(train.pos, train.track_at(train.pos))
+        done, metres = 0.0, 0.0
+        while done < px_dist and metres < 6000:
+            metres += 5
+            pos = train.pos - train.direction * metres
+            cur = self.layout.point(pos, train.track_at(pos))
+            done += math.dist(prev, cur)
+            prev = cur
+        return prev
+
+    def _draw_car(self, screen, a, b, stripe, front: bool, rear: bool) -> None:
+        """One carriage from a (its front end) to b (its rear end), in screen pixels."""
+        ux, uy = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(ux, uy) or 1.0
+        ux, uy = ux / length, uy / length
+        nx, ny = -uy, ux
+        if ny < 0 or (ny == 0 and nx < 0):
+            nx, ny = -nx, -ny  # make n point down the screen, so the roof is always on top
+        k = ui.scale()
+
+        def band(o0, o1, l0, l1, colour):
+            o0, o1, l0, l1 = o0 * k, o1 * k, l0 * k, l1 * k
+            pygame.draw.polygon(
+                screen,
+                colour,
+                [
+                    (a[0] + ux * l0 + nx * o0, a[1] + uy * l0 + ny * o0),
+                    (a[0] + ux * l1 + nx * o0, a[1] + uy * l1 + ny * o0),
+                    (a[0] + ux * l1 + nx * o1, a[1] + uy * l1 + ny * o1),
+                    (a[0] + ux * l0 + nx * o1, a[1] + uy * l0 + ny * o1),
+                ],
+            )
+
+        car_len = length / k
+        band(-7.5, 7.5, -0.5, car_len + 0.5, INK)
+        band(-6, 6, 0, car_len, TRAIN_BODY)
+        band(-6, -4, 1, car_len - 1, TRAIN_ROOF)
+        band(2.5, 6, 0.5, car_len - 0.5, stripe)
+        start, end = (7 if front else 3.0), car_len - (7 if rear else 3.0)
+        pos = start
+        while pos + 3 <= end:
+            band(-3, 1, pos, pos + 3, GLASS)
+            pos += 5
+        if front:
+            band(-4, 1.5, 1, 5, GLASS_LIGHT)
+            ui.circle(screen, (255, 236, 150), (a[0] + ux * 1.5 * k + nx * 4 * k, a[1] + uy * 1.5 * k + ny * 4 * k), 1.6 * k)
+        if rear:
+            band(-4, 1.5, car_len - 5, car_len - 1, GLASS)
+            ui.circle(screen, (230, 60, 50), (b[0] - ux * 1.5 * k + nx * 4 * k, b[1] - uy * 1.5 * k + ny * 4 * k), 1.4 * k)
+
     def _draw_trains(self, screen) -> None:
         line = self.sim.line
         crashed = self.sim.crash or ()
+        self.train_boxes = []
         for train in self.sim.trains:
             if train.state != "running":
                 continue
             low, high = train.span
             if high < line.west_edge or low > line.east_edge:
                 continue  # completely off the map
-            # Walk back from the front of the train until it is long enough to see (24 px).
-            # Each part of the body is drawn on its own track, so the tail follows the head
-            # through the points instead of jumping across.
-            shape = [self.layout.point(train.pos, train.track_at(train.pos))]
-            drawn, metres = 0.0, 0.0
-            while (drawn < S(24) or metres < TRAIN_LENGTH) and metres < 4000:
-                metres += 10
-                p = train.pos - train.direction * metres
-                nxt = self.layout.point(p, train.track_at(p))
-                drawn += math.dist(shape[-1], nxt)
-                shape.append(nxt)
-            head_xy, tail_xy = shape[0], shape[-1]
-            colour = RED if train in crashed else train_colour(train)
-            ui.thick_lines(screen, (0, 0, 0), shape, S(14))
-            ui.thick_lines(screen, colour, shape, S(10))
-            ui.circle(screen, WHITE, head_xy, S(3))
+            stripe = RED if train in crashed else train_colour(train)
+            cars = 3 if train_kind(train) == "IR" else 2
+            ends = []
+            for i in range(cars):
+                offset = S(i * (CAR_PX + CAR_GAP_PX))
+                ends.append((self._walk_back(train, offset), self._walk_back(train, offset + S(CAR_PX))))
+            for i in reversed(range(cars)):
+                a, b = ends[i]
+                if i < cars - 1:
+                    pygame.draw.line(screen, INK, b, ends[i + 1][0], max(1, S(3)))
+                self._draw_car(screen, a, b, stripe, front=i == 0, rear=i == cars - 1)
+            self._draw_train_label(screen, train, ends)
 
-            nx, ny = self.layout.normal(train.pos)
-            offset = S(32) + (self.gap if train.track == 2 else 0)
-            mid = ((head_xy[0] + tail_xy[0]) / 2, (head_xy[1] + tail_xy[1]) / 2)
-            lx, ly = mid[0] - nx * offset, mid[1] - ny * offset
-            name = self.f_small.render(f"{train.name} {train.arrow}", True, WHITE)
-            delay = train.delay(self.sim.time)
-            tag_text = "on time" if delay < 30 else f"+{delay / 60:.0f} min"
-            tag = self.f_small.render(tag_text, True, GREEN if delay < 30 else RED)
-            screen.blit(name, (lx - name.get_width() / 2, ly - S(9)))
-            screen.blit(tag, (lx - tag.get_width() / 2, ly + S(6)))
+    def _draw_train_label(self, screen, train: Train, ends) -> None:
+        """A small tag next to the train: type, number, delay and the way it is going."""
+        head, tail = ends[0][0], ends[-1][1]
+        mid = ((head[0] + tail[0]) / 2, (head[1] + tail[1]) / 2)
+        nx, ny = self.layout.normal(train.pos)
+        offset = S(34) + (self.gap if train.track == 2 else 0)
+        lx, ly = mid[0] - nx * offset, mid[1] - ny * offset
+        colour = train_colour(train)
+        chip = self.f_bold.render(train_kind(train), True, BG)
+        number = self.f_small.render(train.name.split()[-1], True, WHITE)
+        delay = train.delay(self.sim.time)
+        tag = self.f_small.render("on time" if delay < 30 else f"+{delay / 60:.0f} min", True, GREEN if delay < 30 else RED)
+        arrow = self.f_bold.render("→" if train.direction == EAST else "←", True, colour)
+        width = chip.get_width() + number.get_width() + tag.get_width() + arrow.get_width() + S(34)
+        box = pygame.Rect(0, 0, width, S(22))
+        box.center = (int(lx), int(ly))
+        box.clamp_ip(SR(4, TOP_BAR + 4, PANEL_X - 8, HEIGHT - TOP_BAR - 8))
+        pygame.draw.rect(screen, (10, 14, 20), box, border_radius=S(6))
+        pygame.draw.rect(screen, colour, box, max(1, S(2)), border_radius=S(6))
+        chip_box = pygame.Rect(box.x + S(3), box.y + S(3), chip.get_width() + S(8), S(16))
+        pygame.draw.rect(screen, colour, chip_box, border_radius=S(4))
+        screen.blit(chip, chip.get_rect(center=chip_box.center))
+        x = chip_box.right + S(5)
+        screen.blit(number, (x, box.y + S(4)))
+        x += number.get_width() + S(7)
+        screen.blit(tag, (x, box.y + S(4)))
+        screen.blit(arrow, arrow.get_rect(midright=(box.right - S(5), box.centery)))
+        body = pygame.Rect(int(min(head[0], tail[0])), int(min(head[1], tail[1])), 1, 1)
+        body.union_ip(pygame.Rect(int(max(head[0], tail[0])), int(max(head[1], tail[1])), 1, 1))
+        self.train_boxes.append((box, train))
+        self.train_boxes.append((body.inflate(S(10), S(10)), train))
 
     def _draw_stations(self, screen) -> None:
         lay = self.layout
@@ -300,8 +406,9 @@ class Renderer:
         screen.blit(self.f_title.render("Drivers' requests", True, WHITE), (S(PANEL_X + 18), S(TOP_BAR + 14)))
         requests = sorted(self.sim.requests.values(), key=lambda r: r.created)
         y = S(TOP_BAR + 50)
-        bottom = S(HEIGHT - 150)
+        bottom = S(REQUESTS_BOTTOM)
         width = S(WIDTH - PANEL_X - 32)
+        self.request_buttons = []
         if not requests:
             screen.blit(self.f_text.render("All quiet on the line.", True, MUTED), (S(PANEL_X + 18), y))
         for i, request in enumerate(requests):
@@ -318,8 +425,16 @@ class Renderer:
             screen.blit(self.f_bold.render(request.train.name, True, WHITE), (card.x + S(16), card.y + S(9)))
             waited = self.sim.time - request.created
             age = "now" if waited < 60 else f"{waited / 60:.0f} min ago"
-            text = self.f_small.render(age, True, MUTED)
-            screen.blit(text, (card.right - text.get_width() - S(12), card.y + S(11)))
+            name_w = self.f_bold.size(request.train.name)[0]
+            screen.blit(self.f_small.render(age, True, MUTED), (card.x + S(26) + name_w, card.y + S(11)))
+            # "Do it" switches the signal or points the driver is asking for.
+            label = self.f_bold.render("Do it", True, WHITE)
+            button = pygame.Rect(0, 0, label.get_width() + S(18), S(24))
+            button.topright = (card.right - S(8), card.y + S(6))
+            hovered = button.collidepoint(hover)
+            pygame.draw.rect(screen, (90, 145, 230) if hovered else BUTTON_ON, button, border_radius=S(6))
+            screen.blit(label, label.get_rect(center=button.center))
+            self.request_buttons.append((button, request))
             for j, line in enumerate(lines):
                 screen.blit(self.f_text.render(line, True, TEXT), (card.x + S(16), card.y + S(32) + S(19) * j))
             y += height + S(10)
@@ -335,6 +450,32 @@ class Renderer:
                 current = test
         lines.append(current)
         return lines
+
+    def _draw_next_trains(self, screen) -> None:
+        x0, y = PANEL_X + 18, REQUESTS_BOTTOM + 10
+        right = WIDTH - 18
+        pygame.draw.line(screen, CARD, (S(PANEL_X + 16), S(y - 8)), (S(right), S(y - 8)), max(1, S(1)))
+        screen.blit(self.f_bold.render("Next trains", True, WHITE), (S(x0), S(y)))
+        waiting = sorted((t for t in self.sim.trains if t.state == "waiting"), key=lambda t: t.enter_time)
+        y += 26
+        if not waiting:
+            screen.blit(self.f_small.render("No more trains to come.", True, MUTED), (S(x0), S(y)))
+            return
+        first, last = self.sim.line.stations[0].name, self.sim.line.stations[-1].name
+        for train in waiting[:5]:
+            colour = train_colour(train)
+            screen.blit(self.f_text.render(clock_text(train.enter_time), True, TEXT), (S(x0), S(y)))
+            chip = SR(x0 + 56, y + 1, 26, 18)
+            pygame.draw.rect(screen, colour, chip, border_radius=S(4))
+            text = self.f_bold.render(train_kind(train), True, BG)
+            screen.blit(text, text.get_rect(center=chip.center))
+            screen.blit(self.f_text.render(train.name.split()[-1], True, TEXT), (S(x0 + 88), S(y)))
+            side = f"from {first}" if train.direction == EAST else f"from {last}"
+            screen.blit(self.f_small.render(side, True, MUTED), (S(x0 + 150), S(y + 2)))
+            minutes = (train.enter_time - self.sim.time) / 60
+            when = self.f_bold.render("now" if minutes < 0.5 else f"{minutes:.0f} min", True, YELLOW if minutes < 3 else TEXT)
+            screen.blit(when, (S(right) - when.get_width(), S(y)))
+            y += 24
 
     def _draw_legend(self, screen) -> None:
         y = HEIGHT - 135
@@ -360,8 +501,14 @@ class Renderer:
     def _draw_hover(self, screen, hover) -> None:
         obj = self.object_at(hover)
         if obj is None:
-            return
-        if isinstance(obj, Signal):
+            train = self.train_at(hover)
+            if train is None:
+                return
+            last = self.sim.line.stations[-1 if train.direction == EAST else 0].name
+            stop = train.next_stop()
+            where = f"next stop {stop.station.name} {clock_text(stop.arrive)}" if stop else "leaving the map"
+            text = f"{train.name} to {last} · {where} · track {train.track}"
+        elif isinstance(obj, Signal):
             state = "green" if obj.green else "red"
             where = "entry" if obj.is_entry else f"track {obj.track} exit"
             text = f"Signal {obj.id} · {obj.station.name} {where} · {state}"
