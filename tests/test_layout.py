@@ -70,3 +70,28 @@ def test_clicks_work_when_the_window_is_scaled():
     finally:
         ui.set_scale(1.0)
         pygame.quit()
+
+
+def test_train_tags_never_cover_each_other():
+    """On the busiest Oeste level the tags of trains passing close together move apart."""
+    import pygame
+
+    from railgame import render
+    from railgame.levels import build_level
+    from tests.test_simulation import careful_player_move
+
+    pygame.init()
+    screen = pygame.display.set_mode((1280, 720))
+    info, sim = build_level("oeste", 8)
+    renderer = render.Renderer(sim)
+    for step in range(1500):
+        careful_player_move(sim)
+        sim.advance(2)
+        if sim.over:
+            break
+        if step % 5:
+            continue
+        renderer.draw(screen, info, 1, (0, 0), None)
+        tags = [box for i, (box, _) in enumerate(renderer.train_boxes) if i % 2 == 0]
+        for i, a in enumerate(tags):
+            assert not any(a.colliderect(b) for b in tags[i + 1 :])

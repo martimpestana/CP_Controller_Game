@@ -5,12 +5,12 @@ description = "Railway signalling game: keep the trains on the Algarve line runn
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "pygame>=2.6",
+    "pygame==2.6.1",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8",
+    "pytest==9.2.0",
 ]
 
 [tool.pytest.ini_options]

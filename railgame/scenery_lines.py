@@ -18,6 +18,7 @@ import pygame
 
 from railgame import render as R
 from railgame import ui
+from railgame.layout import NearestSample
 from railgame.render import HEIGHT, PANEL_X, TOP_BAR, WHITE, glow, mix
 from railgame.ui import S
 
@@ -482,8 +483,10 @@ def douro_land(self, surf, cells, rng, area, kind_at):
         samples.append((*lay.point(pos), *lay.normal(pos), pos))
         pos += 150
 
+    nearest = NearestSample(samples, S(60)).nearest
+
     def where(x, y):
-        sx, sy, nx, ny, p = min(samples, key=lambda s: (s[0] - x) ** 2 + (s[1] - y) ** 2)
+        sx, sy, nx, ny, p = nearest(x, y)
         beyond = not (line.west_edge - 1500 <= p <= line.east_edge + 1500)  # past the ends of the line
         return math.dist((x, y), (sx, sy)), ((x - sx) * nx + (y - sy) * ny) * side > 0, beyond
 

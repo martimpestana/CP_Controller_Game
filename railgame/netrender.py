@@ -278,6 +278,7 @@ class NetRenderer(Renderer):
     # ------------------------------------------------------------------ every frame
 
     def draw(self, screen, info, speed, hover, toast) -> None:
+        self.first_level = getattr(info, "number", None) == 1
         screen.blit(self.background, (0, 0))
         if screen.get_flags() & pygame.SRCALPHA:
             screen.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGBA_MAX)
@@ -296,10 +297,7 @@ class NetRenderer(Renderer):
         self._draw_legend(screen)
         self._draw_hover(screen, hover)
         if toast:
-            text = self.f_text.render(toast, True, R.WHITE)
-            box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 30))).inflate(S(24), S(14))
-            pygame.draw.rect(screen, (90, 40, 40), box, border_radius=S(8))
-            screen.blit(text, text.get_rect(center=box.center))
+            self._draw_toast(screen, toast)
 
     def _draw_points(self, screen, highlighted) -> None:
         lay = self.layout
@@ -468,7 +466,7 @@ class NetRenderer(Renderer):
             ("signal", "Click a signal: red ↔ green"),
             ("point", "Click points: white straight, yellow the other way"),
             ("ring", "Fast trains: keep them off the slow tracks"),
-            ("keys", "Space pause · 1/2/3/4 speed · R restart · Esc menu"),
+            ("keys", "Space pause · 1/2/3/4 speed · R restart · Esc levels"),
         ]
         for i, (kind, text) in enumerate(items):
             cy = y + 32 + i * 24

@@ -11,7 +11,7 @@ import random
 import pygame
 
 from railgame import skins, ui
-from railgame.layout import Layout
+from railgame.layout import Layout, NearestSample
 from railgame.simulation import Request, Simulation
 from railgame.track import EAST, Point, Signal
 from railgame.train import Train
@@ -152,6 +152,27 @@ def apply_theme(colours: dict[str, tuple[int, int, int]]) -> None:
 
 _glow_cache: dict = {}
 
+# Maps already drawn, by line, colours and scale (see Renderer._prepare_background).
+_background_cache: dict = {}
+_CACHED_SCENERY = ("background", "wave_marks", "windows", "lamp", "sea_angle", "beam_sweep", "windmills", "turbines")
+
+
+def _theme_colour_names() -> tuple[str, ...]:
+    from railgame.themes import THEMES
+
+    return tuple(sorted({name for colours in THEMES.values() for name in colours}))
+
+
+def _background_key(line_name: str) -> tuple:
+    return (line_name, ui.scale(), MAP_MODE, tuple(globals().get(name) for name in _theme_colour_names()))
+
+
+def map_is_ready(line_name: str) -> bool:
+    """True when the map of this line is already drawn for the current colours and scale."""
+    return _background_key(line_name) in _background_cache
+
+
+
 
 def glow(surf, x: float, y: float, r: float, colour, strength: float) -> None:
     """Light added on top of what is already drawn, brightest in the middle."""
@@ -178,6 +199,8 @@ def train_colour(train: Train) -> tuple[int, int, int]:
 
 
 class Renderer:
+    first_level = False  # level 1 of a line shows a few tips (set in draw)
+
     def __init__(self, sim: Simulation, train_skins: dict[str, str] | None = None):
         self.sim = sim
         self.skins = train_skins or dict(skins.DEFAULT_SKINS)
@@ -249,8 +272,6 @@ class Renderer:
     def _prepare_background(self) -> None:
         line = self.sim.line
         lay = self.layout
-        surf = pygame.Surface((S(WIDTH), S(HEIGHT)))
-        surf.fill(BG)
         storybook_line = line.geo.scenery.endswith("storybook")
         self.storybook = storybook_line and MAP_MODE in ("day", "night")
         self.night = self.storybook and MAP_MODE == "night"
@@ -269,6 +290,17 @@ class Renderer:
         self._last_tick: int | None = None
         self.land = SB_LAND if self.storybook else LAND
         self.sea = SB_SEA if self.storybook else SEA
+
+        # The map only depends on the line, the colours and the screen scale, so it is drawn
+        # once and reused when the same line is played again (the Douro takes a while to draw).
+        key = _background_key(line.name)
+        cached = _background_cache.get(key)
+        if cached is not None:
+            self.__dict__.update(cached)
+            return
+
+        surf = pygame.Surface((S(WIDTH), S(HEIGHT)))
+        surf.fill(BG)
         pygame.draw.rect(surf, self.land, SR(0, TOP_BAR, PANEL_X, HEIGHT - TOP_BAR))
 
         self._draw_water(surf)
@@ -291,6 +323,7 @@ class Renderer:
         self._edge_label(surf, line.west_edge, -1, geo.start_label)
         self._edge_label(surf, line.east_edge, 1, geo.end_label)
         self.background = surf
+        _background_cache[key] = {name: getattr(self, name) for name in _CACHED_SCENERY}
 
     def _edge_label(self, surf, pos: float, outwards: int, name: str) -> None:
         """Label where the line leaves the map, with an arrow pointing the way it goes."""
@@ -386,8 +419,10 @@ class Renderer:
             samples.append((*lay.point(pos), *lay.normal(pos)))
             pos += 150
 
+        nearest = NearestSample(samples, S(60)).nearest
+
         def from_track(x: float, y: float) -> tuple[float, bool]:
-            sx, sy, nx, ny = min(samples, key=lambda s: (s[0] - x) ** 2 + (s[1] - y) ** 2)
+            sx, sy, nx, ny = nearest(x, y)
             inland = ((x - sx) * nx + (y - sy) * ny) * land_side > 0
             return math.dist((x, y), (sx, sy)), inland
 
@@ -811,6 +846,7 @@ class Renderer:
     # ------------------------------------------------------------------ drawing a frame
 
     def draw(self, screen: pygame.Surface, info, speed: int, hover: tuple[int, int], toast: str | None) -> None:
+        self.first_level = getattr(info, "number", None) == 1
         screen.blit(self.background, (0, 0))
         if screen.get_flags() & pygame.SRCALPHA:
             # Some windows (e.g. on macOS) keep an alpha channel, and the background leaves it at 0.
@@ -824,16 +860,22 @@ class Renderer:
         self._draw_signals(screen, highlighted)
         self._draw_trains(screen)
         self._draw_stations(screen)
+        self._draw_train_labels(screen)
         self._draw_top_bar(screen, info, speed)
         self._draw_requests(screen, hover)
         self._draw_next_trains(screen)
         self._draw_legend(screen)
         self._draw_hover(screen, hover)
         if toast:
-            text = self.f_text.render(toast, True, WHITE)
-            box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 30))).inflate(S(24), S(14))
-            pygame.draw.rect(screen, (90, 40, 40), box, border_radius=S(8))
-            screen.blit(text, text.get_rect(center=box.center))
+            self._draw_toast(screen, toast)
+
+    def _draw_toast(self, screen, toast: str) -> None:
+        """Why the last click was refused, at the top of the map."""
+        text = self.f_bold.render(toast, True, WHITE)
+        box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 32))).inflate(S(28), S(18))
+        pygame.draw.rect(screen, (110, 36, 36), box, border_radius=S(8))
+        pygame.draw.rect(screen, RED, box, max(1, S(2)), border_radius=S(8))
+        screen.blit(text, text.get_rect(center=box.center))
 
     def _draw_animated(self, screen, speed: int) -> None:
         """What moves on the storybook map. By day the little waves rock while the trains run
@@ -944,24 +986,29 @@ class Renderer:
             if s.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[s.id])
 
-    def _walk_back(self, train: Train, px_dist: float) -> tuple[float, float]:
-        """The point on the drawn track px_dist screen pixels behind the front of the train.
-        Each step uses the track that part of the train is on, so the carriages follow the
-        front through the points instead of jumping across."""
+    def _walk_back(self, train: Train, px_dists: list[float]) -> list[tuple[float, float]]:
+        """The points on the drawn track px_dists screen pixels behind the front of the train
+        (in increasing order), found in a single walk along the track. Each step uses the track
+        that part of the train is on, so the carriages follow the front through the points
+        instead of jumping across."""
         prev = self.layout.point(train.pos, train.track_at(train.pos))
         done, metres = 0.0, 0.0
-        while done < px_dist and metres < 6000:
-            metres += 5
-            pos = train.pos - train.direction * metres
-            cur = self.layout.point(pos, train.track_at(pos))
-            done += math.dist(prev, cur)
-            prev = cur
-        return prev
+        out = []
+        for want in px_dists:
+            while done < want and metres < 6000:
+                metres += 5
+                pos = train.pos - train.direction * metres
+                cur = self.layout.point(pos, train.track_at(pos))
+                done += math.dist(prev, cur)
+                prev = cur
+            out.append(prev)
+        return out
 
     def _draw_trains(self, screen) -> None:
         line = self.sim.line
         crashed = self.sim.crash or ()
         self.train_boxes = []
+        self._labels_to_draw = []
         t = pygame.time.get_ticks() / 1000
         for train in self.sim.trains:
             if train.state != "running":
@@ -973,24 +1020,43 @@ class Renderer:
             kind = train_kind(train)
             cars = skins.CARS.get(kind, 2)
             skin = self.skins.get(kind, "real")
-            ends = []
+            dists = []
             for i in range(cars):
                 offset = S(i * (CAR_PX + CAR_GAP_PX))
-                ends.append((self._walk_back(train, offset), self._walk_back(train, offset + S(CAR_PX))))
+                dists += [offset, offset + S(CAR_PX)]
+            points = self._walk_back(train, dists)
+            ends = list(zip(points[::2], points[1::2]))
             for i in reversed(range(cars)):
                 a, b = ends[i]
                 if i < cars - 1:
                     pygame.draw.line(screen, INK, b, ends[i + 1][0], max(1, S(3)))
                 skins.draw_car(screen, a, b, kind, skin, stripe, i, cars, ui.scale(), t)
-            self._draw_train_label(screen, train, ends)
+            self._labels_to_draw.append((train, ends))
 
-    def _draw_train_label(self, screen, train: Train, ends) -> None:
+    def _draw_train_labels(self, screen) -> None:
+        """Draw the trains' tags after the stations, so nothing hides them, and move a tag
+        further from its train when it would cover another tag or a station."""
+        taken = [self._station_box(st) for st in self.sim.line.stations]
+        for train, ends in self._labels_to_draw:
+            self._draw_train_label(screen, train, ends, taken)
+
+    def _station_box(self, st) -> pygame.Rect:
+        """The white circle of a station, as a rectangle that train tags keep clear of."""
+        lay = self.layout
+        if st.has_loop:
+            x, y = lay.local(st, 0, self.gap / 2)
+            r = S(16)
+        else:
+            x, y = lay.point(st.pos)
+            r = S(10)
+        return pygame.Rect(int(x - r), int(y - r), 2 * r, 2 * r)
+
+    def _draw_train_label(self, screen, train: Train, ends, taken: list[pygame.Rect] | None = None) -> None:
         """A small tag next to the train: type, number, delay and the way it is going."""
         head, tail = ends[0][0], ends[-1][1]
         mid = ((head[0] + tail[0]) / 2, (head[1] + tail[1]) / 2)
         nx, ny = self.layout.normal(train.pos)
         offset = S(34) + (self.gap if train.track == 2 else 0)
-        lx, ly = mid[0] - nx * offset, mid[1] - ny * offset
         colour = train_colour(train)
         chip = self.f_bold.render(train_kind(train), True, BG)
         number = self.f_small.render(train.name.split()[-1], True, WHITE)
@@ -999,8 +1065,20 @@ class Renderer:
         arrow = self.f_bold.render("→" if train.direction == EAST else "←", True, colour)
         width = chip.get_width() + number.get_width() + tag.get_width() + arrow.get_width() + S(34)
         box = pygame.Rect(0, 0, width, S(22))
-        box.center = (int(lx), int(ly))
-        box.clamp_ip(SR(4, TOP_BAR + 4, PANEL_X - 8, HEIGHT - TOP_BAR - 8))
+        area = SR(4, TOP_BAR + 4, PANEL_X - 8, HEIGHT - TOP_BAR - 8)
+        taken = taken if taken is not None else []
+        # First choice: on its usual side of the track. If that covers another tag or a
+        # station, try further out, then the other side of the track.
+        for side, extra in ((1, 0), (1, 26), (-1, 6), (-1, 32), (1, 52), (-1, 58), (1, 78), (-1, 84), (1, 104), (-1, 110)):
+            o = side * (offset + S(extra)) if side > 0 else -(S(34) + S(extra))
+            box.center = (int(mid[0] - nx * o), int(mid[1] - ny * o))
+            box.clamp_ip(area)
+            if box.collidelist(taken) < 0:
+                break
+        else:  # nowhere free: keep the usual place
+            box.center = (int(mid[0] - nx * offset), int(mid[1] - ny * offset))
+            box.clamp_ip(area)
+        taken.append(box.inflate(S(4), S(4)))
         pygame.draw.rect(screen, (10, 14, 20), box, border_radius=S(6))
         pygame.draw.rect(screen, colour, box, max(1, S(2)), border_radius=S(6))
         chip_box = pygame.Rect(box.x + S(3), box.y + S(3), chip.get_width() + S(8), S(16))
@@ -1094,6 +1172,14 @@ class Renderer:
         self.request_buttons = []
         if not requests:
             screen.blit(self.f_text.render("All quiet on the line.", True, MUTED), (S(PANEL_X + 18), y))
+            if self.first_level:  # a few words for someone playing for the first time
+                tips = (
+                    "When a train comes, its driver asks you for something here: a green "
+                    "signal or the points set for a track. Click the signal or points that "
+                    "pulse on the map, or press Do it on the request."
+                )
+                for i, line in enumerate(self._wrap(tips, width - S(10))):
+                    screen.blit(self.f_text.render(line, True, TEXT), (S(PANEL_X + 18), y + S(34 + 20 * i)))
         for i, request in enumerate(requests):
             lines = self._wrap(request.text, width - S(30))
             height = S(40) + S(19) * len(lines)
@@ -1167,7 +1253,7 @@ class Renderer:
             ("signal", "Click a signal: red ↔ green"),
             ("point", "Click points: white straight, yellow to track 2"),
             ("ring", "Pulsing ring: a driver is waiting for it"),
-            ("keys", "Space pause · 1/2/3/4 speed · R restart · Esc menu"),
+            ("keys", "Space pause · 1/2/3/4 speed · R restart · Esc levels"),
         ]
         for i, (kind, text) in enumerate(items):
             cy = y + 32 + i * 24

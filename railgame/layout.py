@@ -152,3 +152,56 @@ class Layout:
 
     def loop_track(self, st: Station) -> list[tuple[float, float]]:
         return self.polyline(st.pos - POINT_OFFSET, st.pos + POINT_OFFSET, track=2)
+
+
+class NearestSample:
+    """Finds the sample closest to a point quickly, by sorting the samples into a grid.
+
+    Each sample is a tuple that starts with x, y. The answer is exactly what
+    ``min(samples, key=squared distance)`` gives, including which one wins a tie
+    (the first in the list), so the scenery drawn with it does not change.
+    """
+
+    def __init__(self, samples: list[tuple], cell: float):
+        if not samples:
+            raise ValueError("NearestSample needs at least one sample")
+        self.samples = samples
+        self.cell = cell
+        self.grid: dict[tuple[int, int], list[int]] = {}
+        for i, s in enumerate(samples):
+            self.grid.setdefault(self._key(s[0], s[1]), []).append(i)
+        self.min_x = min(k[0] for k in self.grid)
+        self.max_x = max(k[0] for k in self.grid)
+        self.min_y = min(k[1] for k in self.grid)
+        self.max_y = max(k[1] for k in self.grid)
+
+    def _key(self, x: float, y: float) -> tuple[int, int]:
+        return int(math.floor(x / self.cell)), int(math.floor(y / self.cell))
+
+    def nearest(self, x: float, y: float) -> tuple:
+        cx, cy = self._key(x, y)
+        # After this many rings every cell of the grid has been looked at.
+        last_ring = max(abs(cx - self.min_x), abs(cx - self.max_x), abs(cy - self.min_y), abs(cy - self.max_y))
+        best_i, best_d = -1, math.inf
+        for ring in range(last_ring + 1):
+            for i in self._ring(cx, cy, ring):
+                s = self.samples[i]
+                d = (s[0] - x) ** 2 + (s[1] - y) ** 2
+                if d < best_d or (d == best_d and i < best_i):
+                    best_i, best_d = i, d
+            # Every sample in a farther ring is at least ring * cell away.
+            if best_i >= 0 and best_d < (ring * self.cell) ** 2:
+                break
+        return self.samples[best_i]
+
+    def _ring(self, cx: int, cy: int, r: int):
+        grid = self.grid
+        if r == 0:
+            yield from grid.get((cx, cy), ())
+            return
+        for dx in range(-r, r + 1):
+            yield from grid.get((cx + dx, cy - r), ())
+            yield from grid.get((cx + dx, cy + r), ())
+        for dy in range(-r + 1, r):
+            yield from grid.get((cx - r, cy + dy), ())
+            yield from grid.get((cx + r, cy + dy), ())
