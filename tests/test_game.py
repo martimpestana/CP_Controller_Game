@@ -72,3 +72,24 @@ def test_a_new_map_shows_loading_first_and_a_known_one_starts_at_once():
     assert game.scene == "playing" and game.info.line == "douro" and game.level_number == 1
     game.do("next")  # same line: the map is ready, no "Loading"
     assert game.scene == "playing" and game.level_number == 2
+
+
+def test_escape_in_the_main_menu_does_not_stop_the_browser_version(monkeypatch):
+    from railgame import game as game_module
+
+    pygame.init()
+    game = Game(pygame.display.set_mode((320, 180)))
+    monkeypatch.setattr(game_module, "IN_BROWSER", True)
+    game.key(pygame.K_ESCAPE)
+    assert game.running and game.scene == "menu"
+    monkeypatch.setattr(game_module, "IN_BROWSER", False)
+    game.key(pygame.K_ESCAPE)  # on the desktop Esc in the main menu closes the game
+    assert not game.running
+
+
+def test_escape_while_playing_goes_back_to_the_levels_as_the_help_says():
+    pygame.init()
+    game = Game(pygame.display.set_mode((320, 180)))
+    game.start_level(1, "algarve")
+    game.key(pygame.K_ESCAPE)
+    assert game.scene == "levels"

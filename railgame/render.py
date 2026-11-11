@@ -857,6 +857,7 @@ class Renderer:
         self._draw_signals(screen, highlighted)
         self._draw_trains(screen)
         self._draw_stations(screen)
+        self._draw_train_labels(screen)
         self._draw_top_bar(screen, info, speed)
         self._draw_requests(screen, hover)
         self._draw_next_trains(screen)
@@ -999,6 +1000,7 @@ class Renderer:
         line = self.sim.line
         crashed = self.sim.crash or ()
         self.train_boxes = []
+        self._labels_to_draw = []
         t = pygame.time.get_ticks() / 1000
         for train in self.sim.trains:
             if train.state != "running":
@@ -1021,15 +1023,32 @@ class Renderer:
                 if i < cars - 1:
                     pygame.draw.line(screen, INK, b, ends[i + 1][0], max(1, S(3)))
                 skins.draw_car(screen, a, b, kind, skin, stripe, i, cars, ui.scale(), t)
-            self._draw_train_label(screen, train, ends)
+            self._labels_to_draw.append((train, ends))
 
-    def _draw_train_label(self, screen, train: Train, ends) -> None:
+    def _draw_train_labels(self, screen) -> None:
+        """Draw the trains' tags after the stations, so nothing hides them, and move a tag
+        further from its train when it would cover another tag or a station."""
+        taken = [self._station_box(st) for st in self.sim.line.stations]
+        for train, ends in self._labels_to_draw:
+            self._draw_train_label(screen, train, ends, taken)
+
+    def _station_box(self, st) -> pygame.Rect:
+        """The white circle of a station, as a rectangle that train tags keep clear of."""
+        lay = self.layout
+        if st.has_loop:
+            x, y = lay.local(st, 0, self.gap / 2)
+            r = S(16)
+        else:
+            x, y = lay.point(st.pos)
+            r = S(10)
+        return pygame.Rect(int(x - r), int(y - r), 2 * r, 2 * r)
+
+    def _draw_train_label(self, screen, train: Train, ends, taken: list[pygame.Rect] | None = None) -> None:
         """A small tag next to the train: type, number, delay and the way it is going."""
         head, tail = ends[0][0], ends[-1][1]
         mid = ((head[0] + tail[0]) / 2, (head[1] + tail[1]) / 2)
         nx, ny = self.layout.normal(train.pos)
         offset = S(34) + (self.gap if train.track == 2 else 0)
-        lx, ly = mid[0] - nx * offset, mid[1] - ny * offset
         colour = train_colour(train)
         chip = self.f_bold.render(train_kind(train), True, BG)
         number = self.f_small.render(train.name.split()[-1], True, WHITE)
@@ -1038,8 +1057,20 @@ class Renderer:
         arrow = self.f_bold.render("→" if train.direction == EAST else "←", True, colour)
         width = chip.get_width() + number.get_width() + tag.get_width() + arrow.get_width() + S(34)
         box = pygame.Rect(0, 0, width, S(22))
-        box.center = (int(lx), int(ly))
-        box.clamp_ip(SR(4, TOP_BAR + 4, PANEL_X - 8, HEIGHT - TOP_BAR - 8))
+        area = SR(4, TOP_BAR + 4, PANEL_X - 8, HEIGHT - TOP_BAR - 8)
+        taken = taken if taken is not None else []
+        # First choice: on its usual side of the track. If that covers another tag or a
+        # station, try further out, then the other side of the track.
+        for side, extra in ((1, 0), (1, 26), (-1, 6), (-1, 32), (1, 52), (-1, 58), (1, 78), (-1, 84), (1, 104), (-1, 110)):
+            o = side * (offset + S(extra)) if side > 0 else -(S(34) + S(extra))
+            box.center = (int(mid[0] - nx * o), int(mid[1] - ny * o))
+            box.clamp_ip(area)
+            if box.collidelist(taken) < 0:
+                break
+        else:  # nowhere free: keep the usual place
+            box.center = (int(mid[0] - nx * offset), int(mid[1] - ny * offset))
+            box.clamp_ip(area)
+        taken.append(box.inflate(S(4), S(4)))
         pygame.draw.rect(screen, (10, 14, 20), box, border_radius=S(6))
         pygame.draw.rect(screen, colour, box, max(1, S(2)), border_radius=S(6))
         chip_box = pygame.Rect(box.x + S(3), box.y + S(3), chip.get_width() + S(8), S(16))
@@ -1206,7 +1237,7 @@ class Renderer:
             ("signal", "Click a signal: red ↔ green"),
             ("point", "Click points: white straight, yellow to track 2"),
             ("ring", "Pulsing ring: a driver is waiting for it"),
-            ("keys", "Space pause · 1/2/3/4 speed · R restart · Esc menu"),
+            ("keys", "Space pause · 1/2/3/4 speed · R restart · Esc levels"),
         ]
         for i, (kind, text) in enumerate(items):
             cy = y + 32 + i * 24

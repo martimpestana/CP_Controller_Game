@@ -131,7 +131,7 @@ class Game:
             return
         if self.scene == "menu":
             lines = list(LEVELS)
-            if key == pygame.K_ESCAPE:
+            if key == pygame.K_ESCAPE and not IN_BROWSER:  # in the browser it would freeze the page
                 self.running = False
             elif pygame.K_1 <= key <= pygame.K_9 and key - pygame.K_0 <= len(lines):
                 self.choose_line(lines[key - pygame.K_1])
