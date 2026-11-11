@@ -6,8 +6,10 @@ line's list in LEVELS. Times are written as "HH:MM".
 
 from dataclasses import dataclass
 
+from railgame.netsim import APPEAR_BEFORE, NetSimulation
+from railgame.network import Network
 from railgame.simulation import Simulation
-from railgame.track import EAST, LINES, WEST, Line
+from railgame.track import EAST, LINES, WEST, Line, Station
 from railgame.train import TRAIN_TYPES, Stop, Train, TrainType
 
 RUNNING_MARGIN = 60  # seconds of slack added to each section of the timetable
@@ -17,7 +19,12 @@ RUNNING_MARGIN = 60  # seconds of slack added to each section of the timetable
 class TrainPlan:
     name: str
     direction: int
-    enters: str  # "HH:MM"
+    enters: str  # "HH:MM". From a terminus (Santa Apolónia): the departure time.
+    # Only on networks (Linha do Norte): where it starts and ends, "SAP" (Santa Apolónia, the
+    # default), "CIN" (the Cintura line) or "N" (north, off the map), and a platform it should use.
+    frm: str = ""
+    to: str = ""
+    platform: str = ""
 
     @property
     def type(self) -> TrainType:
@@ -400,6 +407,132 @@ LEVELS: dict[str, list[LevelInfo]] = {
             line="douro",
         ),
     ],
+    "lisboa": [
+        LevelInfo(
+            1,
+            "Santa Apolónia",
+            "A terminus: trains to Lisbon end here, trains from Lisbon start here. One out, one in.",
+            "06:56",
+            3,
+            [
+                TrainPlan("R 16001", EAST, "07:00"),
+                TrainPlan("R 16002", WEST, "07:01"),
+            ],
+            line="lisboa",
+        ),
+        LevelInfo(
+            2,
+            "The Alfa Pendular",
+            "The Alfa is fast. After Braço de Prata send it onto the fast track, away from the regionals.",
+            "06:56",
+            3,
+            [
+                TrainPlan("AP 120", EAST, "07:00"),
+                TrainPlan("R 16003", EAST, "07:03"),
+                TrainPlan("AP 121", WEST, "07:02"),
+            ],
+            line="lisboa",
+        ),
+        LevelInfo(
+            3,
+            "Four platforms",
+            "Trains in and out at the same time. Keep arrivals and departures on their own platforms.",
+            "06:56",
+            3,
+            [
+                TrainPlan("R 16005", EAST, "07:00"),
+                TrainPlan("R 16006", WEST, "07:00"),
+                TrainPlan("IC 520", EAST, "07:04"),
+                TrainPlan("R 16008", WEST, "07:03"),
+                TrainPlan("R 16007", EAST, "07:07"),
+            ],
+            line="lisboa",
+        ),
+        LevelInfo(
+            4,
+            "The Cintura line",
+            "Trains from Sintra join at Braço de Prata, and some trains from the north go off to Sintra.",
+            "06:58",
+            3,
+            [
+                TrainPlan("R 18201", EAST, "07:00", frm="CIN"),
+                TrainPlan("R 16011", EAST, "07:01"),
+                TrainPlan("R 18202", WEST, "07:01", to="CIN"),
+                TrainPlan("R 16012", WEST, "07:03"),
+                TrainPlan("R 18203", EAST, "07:05", frm="CIN"),
+            ],
+            line="lisboa",
+        ),
+        LevelInfo(
+            5,
+            "Overtaking at Oriente",
+            "The regional leaves first, the Intercidades soon after. Let the fast train pass at Oriente.",
+            "06:56",
+            3,
+            [
+                TrainPlan("R 16021", EAST, "07:00"),
+                TrainPlan("IC 522", EAST, "07:01"),
+                TrainPlan("R 16022", WEST, "07:00"),
+                TrainPlan("AP 123", WEST, "07:01"),
+                TrainPlan("R 18205", EAST, "07:03", frm="CIN"),
+            ],
+            line="lisboa",
+        ),
+        LevelInfo(
+            6,
+            "Freight to Alcântara",
+            "A long, slow freight train comes down from the north and turns off onto the Cintura line.",
+            "06:58",
+            3,
+            [
+                TrainPlan("M 60101", WEST, "07:00", to="CIN"),
+                TrainPlan("AP 125", WEST, "07:01"),
+                TrainPlan("R 16031", EAST, "07:00"),
+                TrainPlan("R 16032", WEST, "07:03"),
+                TrainPlan("AP 126", EAST, "07:04"),
+                TrainPlan("M 60102", EAST, "07:02", frm="CIN"),
+            ],
+            line="lisboa",
+        ),
+        LevelInfo(
+            7,
+            "Full house",
+            "More trains arrive than platforms 3 and 4 can take. Use the crossover to platforms 1 and 2.",
+            "06:56",
+            4,
+            [
+                TrainPlan("R 16041", EAST, "07:00"),
+                TrainPlan("R 16042", WEST, "06:59"),
+                TrainPlan("AP 127", WEST, "07:00"),
+                TrainPlan("IC 524", WEST, "07:02"),
+                TrainPlan("R 16044", WEST, "07:04"),
+                TrainPlan("AP 128", EAST, "07:05"),
+                TrainPlan("R 16043", EAST, "07:08"),
+            ],
+            line="lisboa",
+        ),
+        LevelInfo(
+            8,
+            "Morning rush",
+            "The busiest hour of the day: Alfas, Intercidades, regionals, the Cintura and a freight.",
+            "06:56",
+            4,
+            [
+                TrainPlan("R 16051", EAST, "07:00"),
+                TrainPlan("R 16052", WEST, "06:59"),
+                TrainPlan("AP 131", WEST, "07:00"),
+                TrainPlan("R 18211", EAST, "07:01", frm="CIN"),
+                TrainPlan("AP 130", EAST, "07:03"),
+                TrainPlan("M 60111", WEST, "07:02", to="CIN"),
+                TrainPlan("R 16054", WEST, "07:04"),
+                TrainPlan("IC 530", EAST, "07:06"),
+                TrainPlan("R 18212", WEST, "07:06", to="CIN"),
+                TrainPlan("R 16053", EAST, "07:08"),
+                TrainPlan("IC 531", WEST, "07:07"),
+            ],
+            line="lisboa",
+        ),
+    ],
 }
 
 LINE_NAMES = {key: make().name for key, make in LINES.items()}
@@ -409,6 +542,7 @@ LINE_BLURBS = {
     "algarve": ("Faro to Tavira, along the Ria Formosa.", "Regional · Inter-Regional"),
     "oeste": ("Torres Vedras to Caldas da Rainha, north along the coast.", "Regional · Freight"),
     "douro": ("Peso da Régua to Ferradosa, along the river.", "Regional · Inter-Regional · Historic steam"),
+    "lisboa": ("Santa Apolónia to Oriente, four tracks by the Tejo.", "Alfa Pendular · Intercidades · Regional · Freight"),
 }
 
 
@@ -449,6 +583,75 @@ def make_timetable(line: Line, plan: TrainPlan) -> Train:
     return Train(plan.name, direction, clock(plan.enters), stops)
 
 
+NET_MARGIN = 30  # seconds of slack per section on the short Lisbon line
+NET_PLACES = {
+    "SAP": "Santa Apolónia",
+    "CIN": {"R": "Sintra", "M": "Alcântara"},
+    "N": {"AP": "Porto", "IC": "Coimbra", "R": "Azambuja", "M": "Bobadela"},
+}
+
+
+def _place(key: str, code: str) -> str:
+    place = NET_PLACES[key]
+    return place if isinstance(place, str) else place.get(code, "the north")
+
+
+def make_net_timetable(net: Network, plan: TrainPlan) -> Train:
+    """A timetable on the Linha do Norte. Fast trains (AP, IC) stop at Santa Apolónia and
+    Oriente; regionals also at Braço de Prata; freight trains do not stop at all."""
+    kind = plan.type
+    code = kind.code
+    d = plan.direction
+    fast = code in ("AP", "IC")
+    freight = kind.stops == "none"
+    sa, bp, ori = net.station("SAP"), net.station("BPR"), net.station("ORI")
+    frm = plan.frm or ("SAP" if d == EAST else "N")
+    to = plan.to or ("N" if d == EAST else "SAP")
+    terminus_order = ("P2", "P1", "P3", "P4") if d == EAST else ("P3", "P4", "P1", "P2")
+    if plan.platform:
+        terminus_order = (plan.platform,) + tuple(p for p in terminus_order if p != plan.platform)
+    slow_first = ("A", "A2") if d == EAST else ("B", "B2")
+    oriente = tuple(reversed(slow_first)) if fast else slow_first
+    route: list[tuple[Station, tuple[str, ...]]] = []
+    if d == EAST:
+        if frm == "SAP":
+            route.append((sa, terminus_order))
+        if not fast:
+            route.append((bp, ("A",)))
+        route.append((ori, oriente))
+        exit_tracks = oriente
+        entry, pos = ("", sa.stop_position(EAST)) if frm == "SAP" else ("CN", net.tracks["CN"].start)
+    else:
+        route.append((ori, oriente))
+        if not fast:
+            route.append((bp, ("B",)))
+        if to == "SAP":
+            route.append((sa, terminus_order))
+        exit_tracks = ("CS",) if to == "CIN" else ()
+        entry, pos = ("B2" if fast else "B"), net.tracks["B"].end
+    time = clock(plan.enters)
+    enter_time = time - APPEAR_BEFORE if frm == "SAP" else time
+    stops = []
+    for i, (st, options) in enumerate(route):
+        target = st.stop_position(d)
+        if i == 0 and frm == "SAP":
+            stops.append(Stop(st, options[0], round(time - 120), round(time), options=options))
+            pos = target
+            continue
+        time += abs(target - pos) / kind.max_speed + NET_MARGIN
+        arrive = time
+        if not freight:
+            time += kind.dwell_loop if st is ori else 30
+        stops.append(Stop(st, options[0], round(arrive), round(time), passing=freight, options=options))
+        pos = target
+    train = Train(plan.name, d, enter_time, stops)
+    train.origin = _place(frm, code)
+    train.destination = _place(to, code)
+    train.entry_track = entry
+    train.exit_tracks = exit_tracks
+    return train
+
+
 def all_levels() -> list[LevelInfo]:
     return [info for levels in LEVELS.values() for info in levels]
 
@@ -456,6 +659,9 @@ def all_levels() -> list[LevelInfo]:
 def build_level(line_key: str, number: int) -> tuple[LevelInfo, Simulation]:
     info = LEVELS[line_key][number - 1]
     line = LINES[info.line]()
+    if isinstance(line, Network):
+        trains = [make_net_timetable(line, plan) for plan in info.trains]
+        return info, NetSimulation(line, trains, clock(info.start), info.max_average_delay_min * 60)
     trains = [make_timetable(line, plan) for plan in info.trains]
     sim = Simulation(line, trains, clock(info.start), info.max_average_delay_min * 60)
     return info, sim

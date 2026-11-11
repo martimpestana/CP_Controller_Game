@@ -5,6 +5,11 @@ A railway signalling game on Portuguese lines. You are the controller of a singl
 crossing stations. Drivers send you requests, you set the signals and the points, and you try to keep
 every train on time without letting two of them onto the same track.
 
+The Linha do Norte in Lisbon (Santa Apolónia to Oriente) is different: a double-track main line
+with four platforms at the Santa Apolónia terminus, the Cintura line joining at Braço de Prata,
+and two extra fast tracks to Oriente for the Alfa Pendular and the Intercidades. Here the
+danger is a crossover set the wrong way, or a fast train stuck behind a regional.
+
 ## How to run
 
 You need [uv](https://docs.astral.sh/uv/). It installs Python 3.12 and pygame for you.
@@ -102,6 +107,19 @@ the start.
 | 7 | Two steam trains | 6 | 6 min |
 | 8 | Harvest season | 8 | 8 min |
 
+### Linha do Norte (Lisbon)
+
+| Level | Name | Trains | Delay limit |
+| --- | --- | --- | --- |
+| 1 | Santa Apolónia | 2 | 3 min |
+| 2 | The Alfa Pendular | 3 | 3 min |
+| 3 | Four platforms | 5 | 3 min |
+| 4 | The Cintura line | 5 | 3 min |
+| 5 | Overtaking at Oriente | 5 | 3 min |
+| 6 | Freight to Alcântara | 6 | 3 min |
+| 7 | Full house | 7 | 4 min |
+| 8 | Morning rush | 11 | 4 min |
+
 ## Project structure
 
 | File | What it does |
@@ -113,6 +131,10 @@ the start.
 | `railgame/levels.py` | Level definitions and timetable generation |
 | `railgame/layout.py` | Converts metres on the line into pixels on the screen |
 | `railgame/render.py` | Draws a level |
+| `railgame/network.py` | The Lisbon network: named tracks, switches, signals, platforms |
+| `railgame/netsim.py` | The rules on a network: routes, terminus, overtaking, collisions |
+| `railgame/netrender.py` | Draws a network with parallel tracks |
+| `railgame/scenery_lisboa.py` | The storybook background of Lisbon (Alfama, Tejo, Oriente...) |
 | `railgame/game.py` | The window: menu, input, result screen |
 | `tests/` | pytest tests |
 
