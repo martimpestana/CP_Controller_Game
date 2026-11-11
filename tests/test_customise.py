@@ -20,6 +20,14 @@ def test_every_skin_draws_on_the_map_and_in_the_menu():
             skins.draw_car(screen, (200, 50), (200, 80), kind, skin, (255, 150, 60), 0, 2, 1.0, 0.0)
 
 
+def test_every_train_type_has_all_six_skins():
+    ids = [sid for sid, _ in skins.SKINS["R"]]
+    for kind in skins.TRAIN_TYPES:
+        assert [sid for sid, _ in skins.SKINS[kind]] == ids
+        for sid in ids:
+            assert (kind, sid) in skins.DRAW
+
+
 def test_choices_are_saved_and_loaded(tmp_path):
     path = tmp_path / "settings.json"
     settings = Settings.load(path)
@@ -50,6 +58,10 @@ def test_customise_screen_changes_skin_and_theme(tmp_path, monkeypatch):
         game = Game(screen)
         game.settings = Settings.load(tmp_path / "settings.json")
         game.do("customise")
+        game.draw()
+        assert not any(a.startswith("skin:IR:") for _, a in game.buttons)  # only the open tab shows
+        rect = next(r for r, a in game.buttons if a == "tab:IR")
+        game.click(rect.center)
         game.draw()
         action = next(a for _, a in game.buttons if a == "skin:IR:gem")
         rect = next(r for r, a in game.buttons if a == action)

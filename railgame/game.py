@@ -46,6 +46,7 @@ class Game:
         self.f_text = font(16)
         self.f_small = font(14)
         self.settings = Settings.load()
+        self.customise_kind = skins.TRAIN_TYPES[0]  # the tab open in the Customise menu
         render.apply_theme(THEMES[self.settings.theme])
 
     # ------------------------------------------------------------------ levels
@@ -185,6 +186,8 @@ class Game:
             self.scene = "levels"
         elif action == "customise":
             self.scene = "customise"
+        elif action.startswith("tab:"):
+            self.customise_kind = action.split(":")[1]
         elif action.startswith("skin:"):
             _, kind, skin = action.split(":")
             self.settings.set_skin(kind, skin)
@@ -324,25 +327,35 @@ class Game:
         )
         t = pygame.time.get_ticks() / 1000
         y = 120
-        for kind in skins.TRAIN_TYPES:
-            s.blit(self.f_head.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE), (S(80), S(y)))
-            y += 32
-            for i, (sid, name) in enumerate(skins.SKINS[kind]):
-                rect = SR(80 + i * 190, y, 180, 112)
-                chosen = self.settings.skin(kind) == sid
-                hovered = rect.collidepoint(mouse)
-                pygame.draw.rect(s, render.LAND, rect, border_radius=S(10))
-                if chosen or hovered:
-                    pygame.draw.rect(s, BUTTON_ON if chosen else MUTED, rect, S(3), border_radius=S(10))
-                ahead, behind = skins.EXTENT.get((kind, sid), (0, 0))
-                length = skins.CARS[kind] * 25 - 3
-                k = min(2.6, 164 / (length + ahead + behind)) * ui_scale()
-                left = rect.centerx - (length + ahead + behind) * k / 2 + ahead * k
-                skins.draw_preview(s, kind, sid, left, rect.y + S(56), k, EAST_COLOUR, t)
-                label = self.f_text.render(name + ("  ✓" if chosen else ""), True, WHITE if chosen else TEXT)
-                s.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - S(8))))
-                self.buttons.append((rect, f"skin:{kind}:{sid}"))
-            y += 128
+        # One tab per type of train; the skins of the chosen type are shown below.
+        for i, kind in enumerate(skins.TRAIN_TYPES):
+            rect = SR(80 + i * 285, y, 270, 44)
+            chosen = kind == self.customise_kind
+            hovered = rect.collidepoint(mouse)
+            pygame.draw.rect(s, BUTTON_ON if chosen else render.LAND, rect, border_radius=S(10))
+            if hovered and not chosen:
+                pygame.draw.rect(s, MUTED, rect, S(3), border_radius=S(10))
+            label = self.f_head.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE if chosen else TEXT)
+            s.blit(label, label.get_rect(center=rect.center))
+            self.buttons.append((rect, f"tab:{kind}"))
+        y += 64
+        kind = self.customise_kind
+        for i, (sid, name) in enumerate(skins.SKINS[kind]):
+            rect = SR(80 + i * 190, y, 180, 150)
+            chosen = self.settings.skin(kind) == sid
+            hovered = rect.collidepoint(mouse)
+            pygame.draw.rect(s, render.LAND, rect, border_radius=S(10))
+            if chosen or hovered:
+                pygame.draw.rect(s, BUTTON_ON if chosen else MUTED, rect, S(3), border_radius=S(10))
+            ahead, behind = skins.EXTENT.get((kind, sid), (0, 0))
+            length = skins.preview_cars(kind) * 25 - 3
+            k = min(2.6, 164 / (length + ahead + behind)) * ui_scale()
+            left = rect.centerx - (length + ahead + behind) * k / 2 + ahead * k
+            skins.draw_preview(s, kind, sid, left, rect.y + S(70), k, EAST_COLOUR, t)
+            label = self.f_text.render(name + ("  ✓" if chosen else ""), True, WHITE if chosen else TEXT)
+            s.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - S(8))))
+            self.buttons.append((rect, f"skin:{kind}:{sid}"))
+        y += 186
 
         s.blit(self.f_head.render("Map colours", True, WHITE), (S(80), S(y)))
         y += 32

@@ -18,8 +18,8 @@ from railgame import ui
 
 INK = (8, 10, 14)
 
-TRAIN_TYPES = ("R", "IR")
-TYPE_NAMES = {"R": "Regional", "IR": "Inter-Regional"}
+TRAIN_TYPES = ("R", "IR", "M", "H")
+TYPE_NAMES = {"R": "Regional", "IR": "Inter-Regional", "M": "Freight", "H": "Historic"}
 
 # (id, name shown in the menu) for each train type, in menu order. The first one is the default.
 SKINS = {
@@ -39,6 +39,22 @@ SKINS = {
         ("dragon", "Fire dragon"),
         ("gem", "Ruby"),
     ],
+    "M": [
+        ("real", "Real"),
+        ("vintage", "Steam"),
+        ("modern", "Modern"),
+        ("future", "Futuristic"),
+        ("dragon", "Ice dragon"),
+        ("gem", "Emerald"),
+    ],
+    "H": [
+        ("real", "Real"),
+        ("vintage", "Royal"),
+        ("modern", "Panoramic"),
+        ("future", "Futuristic"),
+        ("dragon", "Iron dragon"),
+        ("gem", "Amethyst"),
+    ],
 }
 
 DEFAULT_SKINS = {kind: SKINS[kind][0][0] for kind in TRAIN_TYPES}
@@ -46,9 +62,12 @@ DEFAULT_SKINS = {kind: SKINS[kind][0][0] for kind in TRAIN_TYPES}
 # How far a skin reaches beyond the front and the rear of the train (heads, fire, tails),
 # in design pixels, so the menu can fit the whole picture in its card.
 EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern"): (6, 6), ("R", "future"): (12, 8), ("IR", "future"): (12, 8), ("IR", "modern"): (13, 9),
-          ("R", "gem"): (5, 5), ("IR", "gem"): (5, 5), ("R", "vintage"): (2, 0), ("IR", "vintage"): (3, 0)}
+          ("R", "gem"): (5, 5), ("IR", "gem"): (5, 5), ("R", "vintage"): (2, 0), ("IR", "vintage"): (3, 0),
+          ("M", "vintage"): (3, 0), ("M", "modern"): (4, 0), ("M", "future"): (12, 5), ("M", "dragon"): (29, 19), ("M", "gem"): (5, 5),
+          ("H", "real"): (3, 0), ("H", "vintage"): (3, 0), ("H", "modern"): (4, 0), ("H", "future"): (12, 8), ("H", "dragon"): (30, 18),
+          ("H", "gem"): (5, 5)}
 
-# How many carriages each type has on the map (M and H only have their real look).
+# How many carriages each type has on the map.
 CARS = {"R": 2, "IR": 3, "M": 6, "H": 4}
 
 
@@ -142,7 +161,6 @@ def _real_ir(car, front, rear, stripe, t, index) -> None:
         car.dot((230, 60, 50), L - 1.4, 4.2, 0.8)
 
 
-# Freight (M) and the historic steam train (H) always look like the real thing.
 CONTAINERS = [(40, 110, 170), (190, 60, 50), (230, 170, 40), (60, 140, 90), (210, 210, 214)]
 
 
@@ -205,26 +223,31 @@ def _vintage_r(car, front, rear, stripe, t, index) -> None:
         car.dot((230, 60, 50), L - 1.2, 3.8, 0.8)
 
 
+def _steam_loco(car, stripe, t, boiler=(34, 34, 38), cab=(40, 40, 46), trim=(180, 150, 60), wheel=(180, 40, 40)) -> None:
+    """A steam locomotive with a chimney, big wheels and a puff of smoke."""
+    L = car.length
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-4, 4, 0, L, boiler)
+    car.band(-6, 4, L - 7, L, cab)
+    car.band(-4.5, -1, L - 6, L - 2, (230, 190, 90))  # lit cab window
+    car.band(-9, -4, 3, 5.5, boiler)  # chimney
+    car.band(-4.5, -3.5, 0, L, trim)  # brass line
+    for x in (4, 10, 16):
+        if x < L - 1:
+            car.dot(wheel, x, 4.5, 2.2)
+    car.poly((60, 60, 66), [(0, 2), (-2.5, 6.5), (0, 6.5)])  # cow catcher
+    car.dot((255, 230, 140), 0.5, -1, 1.1)
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    phase = (t * 1.5) % 1.0
+    for i in range(3):
+        f = (phase + i / 3) % 1.0
+        car.dot(_shade((200, 200, 205), 1 - 0.5 * f), 4 + 6 * f, -10 - 6 * f, 1.4 + 2.2 * f)
+
+
 def _vintage_ir(car, front, rear, stripe, t, index) -> None:
     L = car.length
     if index == 0:
-        # A black steam locomotive with a chimney, red wheels and a puff of smoke.
-        car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
-        car.band(-4, 4, 0, L, (34, 34, 38))  # boiler
-        car.band(-6, 4, L - 7, L, (40, 40, 46))  # cab
-        car.band(-4.5, -1, L - 6, L - 2, (230, 190, 90))  # lit cab window
-        car.band(-9, -4, 3, 5.5, (34, 34, 38))  # chimney
-        car.band(-4.5, -3.5, 0, L, (180, 150, 60))  # brass line
-        for x in (4, 10, 16):
-            if x < L - 1:
-                car.dot((180, 40, 40), x, 4.5, 2.2)
-        car.poly((60, 60, 66), [(0, 2), (-2.5, 6.5), (0, 6.5)])  # cow catcher
-        car.dot((255, 230, 140), 0.5, -1, 1.1)
-        car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
-        phase = (t * 1.5) % 1.0
-        for i in range(3):
-            f = (phase + i / 3) % 1.0
-            car.dot(_shade((200, 200, 205), 1 - 0.5 * f), 4 + 6 * f, -10 - 6 * f, 1.4 + 2.2 * f)
+        _steam_loco(car, stripe, t)
         return
     # Old wooden coaches.
     _base(car, (40, 92, 60), (60, 50, 40), stripe)
@@ -705,6 +728,414 @@ def _gem_ir(car, front, rear, stripe, t, index) -> None:
     _gem(car, front, rear, stripe, t, index, palette, (236, 196, 90), (160, 120, 40), [(40, 190, 110), (240, 250, 255)])
 
 
+# ---------------------------------------------------------------------- freight (M) and historic (H)
+
+
+def _vintage_m(car, front, rear, stripe, t, index) -> None:
+    """M: a green steam engine pulling wooden box wagons and open coal wagons."""
+    L = car.length
+    if index == 0:
+        _steam_loco(car, stripe, t, boiler=(30, 72, 50), cab=(36, 84, 58), trim=(214, 178, 80), wheel=(170, 40, 36))
+        return
+    if index % 2:
+        # A wooden box wagon with a sliding door.
+        wood, dark = (134, 62, 42), (96, 42, 28)
+        _base(car, wood, (84, 76, 70), stripe)
+        for x in range(2, int(L) - 1, 3):
+            car.line(dark, x, -4, x, 5, 0.45)
+        d0, d1 = L * 0.35, L * 0.65
+        car.band(-3.8, 4.6, d0, d1, dark)
+        car.line(wood, d0, -3.8, d1, 4.6, 0.5)
+        car.line(wood, d0, 4.6, d1, -3.8, 0.5)
+        car.line((40, 36, 34), d0 - 1, -4.4, d1 + 1, -4.4, 0.6)  # door rail
+    else:
+        # An open wagon heaped with coal.
+        car.poly(INK, [(-0.5, -2.5), (-0.5, 7.5), (L + 0.5, 7.5), (L + 0.5, -2.5)])
+        for i in range(6):
+            x = (i + 0.5) * L / 6
+            car.dot(INK, x, -2.6 - (i % 2) * 0.8, 2.6)
+        car.band(-1.5, 6, 0, L, (90, 84, 78))
+        for i in range(6):
+            x = (i + 0.5) * L / 6
+            car.dot((44, 44, 48), x, -2.6 - (i % 2) * 0.8, 2.0)
+            car.dot((90, 90, 100), x - 0.6, -3.4 - (i % 2) * 0.8, 0.5)  # a shiny lump
+        for x in range(3, int(L) - 1, 4):
+            car.line((64, 60, 56), x, -1.5, x, 5, 0.45)
+        car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    for x in (3.5, L - 3.5):
+        car.dot((40, 40, 44), x, 6.2, 1.4)
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 3.8, 0.8)
+
+
+def _electric_loco(car, stripe, t, body, lower, accent, pantograph=True) -> None:
+    """A modern locomotive with a sloped nose, a dark windscreen and a warning-yellow chin."""
+    L = car.length
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.poly(INK, [(0.5, -7.5), (-3.8, -2), (-3.8, 7.5), (0.5, 7.5)])
+    car.band(-6, 6, 0, L, body)
+    car.poly(body, [(0, -6), (-3, -1.6), (-3, 6), (0, 6)])
+    car.band(1.5, 6, -3, L, lower)
+    car.poly((24, 32, 46), [(0, -5), (-2.4, -1.8), (2.5, -1.8), (2.5, -5)])  # windscreen
+    car.line((110, 140, 180), 0.6, -4.6, 2, -2.4, 0.4)
+    car.band(4.2, 6, -3, 1.5, (250, 204, 40))
+    car.band(-0.6, 0.6, 4, L - 1, accent)
+    for x in range(7, int(L) - 3, 3):
+        car.band(-4.2, -2.2, x, x + 1.6, _shade(body, 0.75))  # grilles
+    car.dot((255, 240, 190), -2.9, 2.6, 0.8)
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if pantograph:
+        _pantograph(car, L * 0.6, t)
+
+
+def _modern_m(car, front, rear, stripe, t, index) -> None:
+    """M: a red electric locomotive pulling tank wagons and car carriers."""
+    L = car.length
+    if index == 0:
+        _electric_loco(car, stripe, t, (196, 36, 40), (200, 206, 214), (255, 255, 255))
+        return
+    car.band(3.4, 6.8, -0.5, L + 0.5, INK)
+    car.band(4, 5.4, 0, L, (60, 62, 68))
+    car.band(5.4, 6.8, 0.5, L - 0.5, stripe)
+    if index % 2:
+        # A silver tank wagon.
+        silver, dark = (196, 202, 210), (130, 136, 146)
+        car.poly(INK, [(1, -5.2), (L - 1, -5.2), (L + 0.6, -1), (L - 1, 4.4), (1, 4.4), (-0.6, -1)])
+        car.poly(silver, [(1.5, -4.4), (L - 1.5, -4.4), (L - 0.2, -1), (L - 1.5, 3.8), (1.5, 3.8), (0.2, -1)])
+        car.line((240, 244, 250), 2, -3.2, L - 2, -3.2, 0.6)  # shine
+        car.line(dark, 2, 2.2, L - 2, 2.2, 0.5)
+        car.band(-6.4, -4.4, L / 2 - 1.5, L / 2 + 1.5, dark)  # filler dome
+        car.band(-1.6, 0.4, L * 0.3, L * 0.7, (240, 140, 40))  # hazard panel
+    else:
+        # A car carrier: two decks of brand new cars in different colours.
+        frame = (90, 96, 106)
+        car.band(-7, -6.2, 0.5, L - 0.5, frame)
+        car.band(-1.2, -0.4, 0.5, L - 0.5, frame)
+        for x in (0.8, L / 2, L - 1.6):
+            car.band(-7, 4, x, x + 0.8, frame)
+        colours = [(230, 230, 236), (40, 90, 200), (210, 40, 40), (30, 30, 34), (240, 190, 40), (120, 124, 132)]
+        for deck, o in enumerate((-1.4, 3.8)):
+            for j in range(2):
+                x = 2 + j * (L - 4) / 2
+                w = (L - 4) / 2 - 1.2
+                c = colours[(index * 3 + deck * 2 + j) % len(colours)]
+                car.poly(INK, [(x - 0.3, o + 0.3), (x - 0.3, o - 2.3), (x + w * 0.25, o - 2.3), (x + w * 0.4, o - 4.3),
+                               (x + w * 0.8, o - 4.3), (x + w + 0.3, o - 2.3), (x + w + 0.3, o + 0.3)])
+                car.poly(c, [(x, o), (x, o - 2), (x + w * 0.28, o - 2), (x + w * 0.42, o - 4), (x + w * 0.78, o - 4), (x + w, o - 2), (x + w, o)])
+                car.poly((60, 80, 110), [(x + w * 0.36, o - 2.2), (x + w * 0.46, o - 3.6), (x + w * 0.74, o - 3.6), (x + w * 0.84, o - 2.2)])
+    if rear:
+        car.dot((230, 60, 50), L - 1, 4.6, 0.8)
+
+
+def _future_m(car, front, rear, stripe, t, index) -> None:
+    """M: a maglev engine pushing glowing cargo pods that float over the track."""
+    neon, accent = (70, 255, 150), (210, 255, 110)
+    if index == 0:
+        _future(car, front, False, stripe, t, index, neon, accent, False)
+        return
+    L = car.length
+    pulse = 0.55 + 0.45 * math.sin(t * 4 + index * 0.8)
+    glow = _lerp_colour(_shade(neon, 0.45), neon, pulse)
+    for i, o in enumerate((8.6, 7.8)):
+        car.band(o - 0.35, o + 0.35, 1 + i, L - 1 - i, _shade(neon, 0.35 + 0.3 * i * pulse))
+    car.band(3.4, 6.6, -0.3, L + 0.3, INK)
+    car.band(4, 6, 0, L, (18, 22, 32))  # the spine that holds the pod
+    car.band(5.4, 6.4, 0.5, L - 0.5, stripe)
+    # A hexagonal pod, bobbing gently.
+    bob = 0.5 * math.sin(t * 2.5 + index)
+    hexagon = [(1, -1 + bob), (2.6, -6 + bob), (L - 2.6, -6 + bob), (L - 1, -1 + bob), (L - 2.6, 3.6 + bob), (2.6, 3.6 + bob)]
+    car.poly(INK, [(l + (0.6 if l > L / 2 else -0.6), o * 1.12) for l, o in hexagon])
+    car.poly((26, 32, 46), hexagon)
+    car.poly((44, 54, 76), hexagon[:4])
+    for p0, p1 in zip(hexagon, hexagon[1:] + hexagon[:1]):
+        car.line(glow, *p0, *p1, 0.45)
+    # The cargo core, glowing, and a scan line passing over it.
+    core = _lerp_colour(_shade(accent, 0.5), accent, 0.5 + 0.5 * math.sin(t * 3 + index * 1.7))
+    car.band(-3.6 + bob, 1.4 + bob, L * 0.3, L * 0.7, _shade(neon, 0.25))
+    car.dot(core, L * 0.5, -1.1 + bob, 1.8)
+    car.dot((240, 255, 240), L * 0.5 - 0.5, -1.6 + bob, 0.6)
+    scan = L * 0.3 + (t * 6 + index * 3) % (L * 0.4)
+    car.line(accent, scan, -3.6 + bob, scan, 1.4 + bob, 0.35)
+    if rear:
+        car.poly(INK, [(L, 3.4), (L + 4.5, 4.6), (L + 4.5, 6.4), (L, 6.6)])
+        car.poly((18, 22, 32), [(L, 4), (L + 3.8, 5), (L + 3.8, 6), (L, 6)])
+        car.line((255, 50, 90), L + 3.6, 5, L + 3.6, 6, 0.8)
+
+
+def _ice_dragon(car, front, rear, stripe, t, index) -> None:
+    """M: a long frost serpent with crystal spikes along its back, a crown of icicles and a
+    freezing breath. Six carriages make it the longest beast on the rails."""
+    L = car.length
+    ice, ice_dark, ice_light = (126, 186, 230), (52, 96, 156), (214, 240, 255)
+    belly, crystal = (232, 244, 255), (170, 230, 255)
+
+    def centre(l):  # the waves travel smoothly from one carriage to the next
+        return 0.3 + 1.2 * math.sin((l + index * (L + 3)) / 6.5 - t * 2.2)
+
+    steps = [i * L / 16 for i in range(17)]
+    top = [(l, centre(l) - 4.4) for l in steps]
+    bottom = [(l, centre(l) + 4.4) for l in steps]
+    # Crystal spikes along the back, catching the light.
+    for i, l in enumerate(steps[2:-1:3]):
+        h = 4.2 + (i % 2) * 1.8
+        c = centre(l) - 4.2
+        car.poly(INK, [(l - 1.9, c + 0.6), (l, c - h - 0.9), (l + 1.9, c + 0.6)])
+        car.poly(crystal, [(l - 1.3, c + 0.4), (l, c - h), (l + 1.3, c + 0.4)])
+        shine = 0.5 + 0.5 * math.sin(t * 3 + l * 0.4 + index)
+        car.poly(_lerp_colour(crystal, (255, 255, 255), shine), [(l - 0.4, c + 0.2), (l, c - h * 0.9), (l + 0.2, c + 0.2)])
+    car.poly(INK, [(l, o - 1) for l, o in top] + [(l, o + 1) for l, o in reversed(bottom)])
+    car.poly(ice, top + list(reversed(bottom)))
+    car.poly(ice_light, top + [(l, o + 1.4) for l, o in reversed(top)])
+    car.poly(belly, [(l, centre(l) + 1.8) for l in steps] + list(reversed(bottom)))
+    for l in steps[1:-1]:
+        car.line(ice, l, centre(l) + 2.0, l, centre(l) + 4.2, 0.35)
+    # Scales: small diamonds in a lattice.
+    for row, off in enumerate((-2.6, -0.2)):
+        x = 0.8 + row * 1.4
+        while x < L - 2:
+            c = centre(x + 1.4) + off
+            car.poly(ice_dark, [(x, c), (x + 1.4, c - 0.9), (x + 2.8, c), (x + 1.4, c + 0.9)])
+            x += 2.8
+    car.band(5.8, 7.0, 0.5, L - 0.5, stripe)
+    # Snowflakes drifting off its body.
+    for i in range(3):
+        f = (t * 0.5 + i / 3 + index * 0.21) % 1.0
+        x = (i * 0.33 + 0.15) * L + f * 6
+        o = -7 - f * 8
+        r = 0.9 * (1 - f) + 0.3
+        car.line((235, 248, 255), x - r, o, x + r, o, 0.3)
+        car.line((235, 248, 255), x, o - r, x, o + r, 0.3)
+    if front:
+        c = centre(0)
+        jaw = 0.8 + 0.6 * (0.5 + 0.5 * math.sin(t * 3))
+        # A crown of icicles swept back over the head.
+        for base, tip in (((-3, c - 4.5), (3, c - 12)), ((-5.5, c - 4), (-2, c - 11)), ((-7.5, c - 3.2), (-6, c - 8.5))):
+            car.poly(INK, [(base[0] - 1.3, base[1] + 0.4), tip, (base[0] + 1.3, base[1] + 0.4)])
+            car.poly(crystal, [(base[0] - 0.8, base[1]), (tip[0] - 0.3, tip[1] + 0.8), (base[0] + 0.8, base[1])])
+        head = [(1, c - 4.4), (-4, c - 5), (-9, c - 3.6), (-13, c - 1.2), (-13.5, c + 0.4), (-6, c + 0.8)]
+        lower = [(-6, c + 1.2), (-13, c + 1 + jaw), (-11, c + 3 + jaw), (-4, c + 4.6), (1, c + 4.4)]
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.1) for l, o in head + [(1, c + 1)]])
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.1) for l, o in lower + [(1, c + 1)]])
+        car.poly(ice, head + [(1, c + 1)])
+        car.poly(ice_light, [(1, c - 4.4), (-4, c - 5), (-9, c - 3.6), (-5, c - 2.6)])
+        car.poly(belly, lower + [(1, c + 1)])
+        car.poly((30, 50, 90), [(-6, c + 0.8), (-13.5, c + 0.4), (-13, c + 1 + jaw), (-6, c + 1.2)])
+        for x in (-12.4, -10.8, -9.2):
+            car.poly((255, 255, 255), [(x, c + 0.5), (x + 0.4, c + 1.6), (x + 0.8, c + 0.6)])
+        # A glowing cyan eye.
+        eye = 0.6 + 0.4 * math.sin(t * 5)
+        car.dot(INK, -7.4, c - 2.2, 1.3)
+        car.dot(_lerp_colour((40, 160, 220), (160, 255, 255), eye), -7.4, c - 2.2, 1.0)
+        car.dot((255, 255, 255), -7.7, c - 2.5, 0.35)
+        # Freezing breath: a pale cone with snowflakes tumbling in it.
+        f = 0.6 + 0.4 * math.sin(t * 6) * math.sin(t * 3.7)
+        reach = 9 + 5 * f
+        b = c + 1 + jaw / 2
+        car.poly((150, 210, 245), [(-13, b - 1.4), (-13 - reach, b - 3.6 * f - 1), (-14 - reach * 1.1, b), (-13 - reach, b + 3.6 * f + 1), (-13, b + 1.4)])
+        car.poly((225, 245, 255), [(-13, b - 0.8), (-13 - reach * 0.75, b - 1.8 * f), (-13 - reach * 0.85, b), (-13 - reach * 0.75, b + 1.8 * f), (-13, b + 0.8)])
+        for i in range(3):
+            s = (t * 2.5 + i * 0.33) % 1.0
+            x, o = -14 - reach * (0.4 + 0.7 * s), b + (i - 1) * 3.2 * s
+            r = 0.9 * (1 - s) + 0.3
+            car.line((255, 255, 255), x - r, o, x + r, o, 0.35)
+            car.line((255, 255, 255), x, o - r, x, o + r, 0.35)
+    if rear:
+        c = centre(L)
+        wag = 1.6 * math.sin(t * 2.8)
+        tail = [(L - 0.5, c - 4.2), (L + 6, c - 2 + wag * 0.5), (L + 12, c - 0.4 + wag), (L + 12, c + 0.8 + wag),
+                (L + 6, c + 2.4 + wag * 0.5), (L - 0.5, c + 4.2)]
+        car.poly(INK, [(l, o * 1.15) for l, o in tail])
+        car.poly(ice, tail)
+        tip = [(L + 11.5, c + 0.2 + wag), (L + 14, c - 3.2 + wag), (L + 18, c + 0.2 + wag), (L + 14, c + 3.6 + wag)]
+        car.poly(INK, [(l + (0.6 if l > L + 15 else 0), o) for l, o in tip])
+        car.poly(crystal, tip)
+        car.poly((255, 255, 255), [(L + 13, c + 0.2 + wag), (L + 14, c - 2 + wag), (L + 15.5, c + 0.2 + wag)])
+
+
+def _gem_m(car, front, rear, stripe, t, index) -> None:
+    # Emerald: deep greens in gold, with small rubies and diamonds.
+    palette = [(150, 250, 180), (40, 200, 110), (16, 150, 80), (8, 100, 56), (80, 224, 140), (4, 70, 40)]
+    _gem(car, front, rear, stripe, t, index, palette, (236, 196, 90), (160, 120, 40), [(220, 30, 60), (240, 250, 255)])
+
+
+def _vintage_h(car, front, rear, stripe, t, index) -> None:
+    """H: the royal train: a green engine lined in gold and maroon saloons with cream window
+    panels, a raised roof and the royal crest."""
+    L = car.length
+    gold = (226, 186, 80)
+    if index == 0:
+        _steam_loco(car, stripe, t, boiler=(26, 76, 54), cab=(32, 88, 62), trim=gold, wheel=(150, 30, 34))
+        car.dot(gold, 10, -1.2, 0.8)
+        return
+    maroon = (112, 24, 38)
+    car.band(-8.6, -6.4, 3, L - 3, INK)  # the raised clerestory roof
+    car.band(-8, -6, 3.5, L - 3.5, (70, 50, 40))
+    _base(car, maroon, (70, 50, 40), stripe)
+    car.band(-3.8, 0.2, 0.8, L - 0.8, (236, 222, 184))  # cream window panel
+    _windows(car, False, False, (50, 40, 50), o0=-3.2, o1=-0.4, step=3.6, size=2.4, start=2, end=L - 2)
+    pos = 2.0
+    while pos + 2.4 <= L - 2:  # curtains tied back
+        car.band(-3.2, -0.4, pos, pos + 0.5, (180, 40, 50))
+        car.band(-3.2, -0.4, pos + 1.9, pos + 2.4, (180, 40, 50))
+        pos += 3.6
+    car.line(gold, 0.6, -4.0, L - 0.6, -4.0, 0.4)
+    car.line(gold, 0.6, 0.4, L - 0.6, 0.4, 0.4)
+    car.line(gold, 0.6, 4.6, L - 0.6, 4.6, 0.4)
+    # The crest: a gold shield with a little crown.
+    m = L / 2
+    car.poly(INK, [(m - 1.8, 1.0), (m + 1.8, 1.0), (m + 1.8, 2.8), (m, 4.6), (m - 1.8, 2.8)])
+    car.poly(gold, [(m - 1.3, 1.3), (m + 1.3, 1.3), (m + 1.3, 2.7), (m, 4.1), (m - 1.3, 2.7)])
+    car.dot((30, 60, 160), m, 2.4, 0.6)
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 3.8, 0.8)
+
+
+def _modern_h(car, front, rear, stripe, t, index) -> None:
+    """H: a panoramic tourist train for the Douro valley: glass all the way up into the roof,
+    so the passengers can see the vineyards, and a navy diesel at the front."""
+    L = car.length
+    if index == 0:
+        _electric_loco(car, stripe, t, (28, 48, 92), (210, 216, 224), (230, 180, 60), pantograph=False)
+        heat = (t * 2) % 1.0  # a shimmer of exhaust from the diesel
+        car.dot(_shade((150, 150, 160), 1 - 0.4 * heat), L * 0.55 + heat * 4, -7.5 - heat * 4, 0.8 + heat * 1.4)
+        return
+    navy, white = (28, 48, 92), (236, 238, 242)
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.poly(INK, [(1, -7.5), (L - 1, -7.5), (L + 0.5, -6), (-0.5, -6)])
+    car.band(-6, 6, 0, L, white)
+    # The glass: up the side and curving over the roof.
+    glass, roof_glass = (40, 70, 110), (90, 130, 170)
+    car.poly(roof_glass, [(1.5, -4.2), (2.5, -6.8), (L - 2.5, -6.8), (L - 1.5, -4.2)])
+    car.band(-4.2, 1.6, 1.5, L - 1.5, glass)
+    for x in range(int(L * 0.25), int(L), int(L * 0.25)):
+        car.line(white, x, -6.8, x, 1.6, 0.5)  # window frames
+    # Passengers looking out.
+    for j in range(5):
+        x = 3 + j * (L - 6) / 4
+        if (j + index) % 3 != 2:
+            car.dot((30, 34, 44), x, -0.6, 1.1)
+            car.band(0.3, 1.6, x - 1.2, x + 1.2, (30, 34, 44))
+    # A reflection gliding over the glass.
+    shine = ((t * 10 + index * 9) % (L + 8)) - 4
+    if 1.5 < shine < L - 3:
+        car.poly((150, 190, 225), [(shine, -6.6), (shine + 1.4, -6.6), (shine + 0.4, 1.4), (shine - 1, 1.4)])
+    car.band(2.4, 3.6, 0, L, navy)
+    car.band(3.6, 4.2, 0, L, (230, 180, 60))
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 4.6, 0.8)
+
+
+def _future_h(car, front, rear, stripe, t, index) -> None:
+    _future(car, front, rear, stripe, t, index, (255, 140, 40), (255, 226, 120), True)
+
+
+def _iron_dragon(car, front, rear, stripe, t, index) -> None:
+    """H: a steam-powered mechanical dragon in riveted bronze and iron, with turning gears,
+    pistons driving its wheels, a furnace for a heart and clouds of steam for breath."""
+    L = car.length
+    bronze, bronze_dark, bronze_light = (176, 120, 56), (110, 70, 34), (226, 172, 96)
+    iron, iron_light, furnace = (64, 66, 72), (110, 114, 124), (255, 120, 30)
+    flicker = 0.6 + 0.4 * math.sin(t * 9) * math.sin(t * 5.3)
+    # Spiked iron plates along the back.
+    x = 2.0
+    while x < L - 1:
+        car.poly(INK, [(x - 2, -5.6), (x + 0.6, -9.6), (x + 2, -5.6)])
+        car.poly(iron, [(x - 1.4, -5.8), (x + 0.5, -8.7), (x + 1.4, -5.8)])
+        x += 4.5
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-6, 6, 0, L, bronze)
+    car.band(-6, -4.6, 0, L, bronze_light)
+    # Riveted panels.
+    n = max(2, round(L / 7))
+    for i in range(n + 1):
+        px = i * L / n
+        car.line(bronze_dark, px, -6, px, 3, 0.5)
+        for o in (-5.2, -1.5, 2.2):
+            if 0.6 < px < L - 0.6:
+                car.dot(bronze_dark, px - 0.9, o, 0.35)
+                car.dot(bronze_dark, px + 0.9, o, 0.35)
+    car.band(3, 6, 0, L, iron)
+    # A big gear in the middle, turning.
+    gx, go = L / 2, -1.2
+    angle = t * 2 + index
+    for i in range(8):
+        a = angle + i * math.pi / 4
+        car.line(INK, gx + 2.4 * math.cos(a), go + 2.4 * math.sin(a), gx + 3.6 * math.cos(a), go + 3.6 * math.sin(a), 1.4)
+        car.line(iron_light, gx + 2.4 * math.cos(a), go + 2.4 * math.sin(a), gx + 3.4 * math.cos(a), go + 3.4 * math.sin(a), 0.8)
+    car.dot(INK, gx, go, 3.0)
+    car.dot(iron_light, gx, go, 2.5)
+    car.dot(bronze_dark, gx, go, 1.0)
+    if index == 0:
+        # The furnace glowing through a grate in its chest.
+        car.band(-2.5, 1.5, L * 0.12, L * 0.3, _lerp_colour((120, 30, 10), furnace, flicker))
+        for gx2 in range(int(L * 0.12) + 1, int(L * 0.3), 1):
+            car.line(INK, gx2, -2.5, gx2, 1.5, 0.3)
+    # Wheels with pistons pushing them round.
+    for wx in (L * 0.25, L * 0.75):
+        a = t * 6 + index
+        car.dot(INK, wx, 5.4, 2.6)
+        car.dot((150, 40, 30), wx, 5.4, 2.1)
+        car.dot(iron_light, wx, 5.4, 0.7)
+        cx, co = wx + 1.5 * math.cos(a), 5.4 + 1.5 * math.sin(a)
+        car.line(INK, cx, co, wx - 5, 2.6, 1.0)
+        car.line(iron_light, cx, co, wx - 5, 2.6, 0.5)
+    car.band(5.6, 6.8, 0.5, L - 0.5, stripe)
+    # Puffs of steam from a vent on the back.
+    phase = (t * 1.3 + index * 0.37) % 1.0
+    for i in range(2):
+        f = (phase + i / 2) % 1.0
+        car.dot(_shade((220, 222, 228), 1 - 0.4 * f), L * 0.7 + 4 * f, -8 - 6 * f, 1 + 2 * f)
+    if front:
+        jaw = 1.0 + 1.0 * (0.5 + 0.5 * math.sin(t * 4))
+        head = [(1, -6.2), (-4, -6.6), (-9, -5), (-13, -2.6), (-13, 0.4), (-5, 0.8)]
+        lower = [(-5, 1.4), (-12.5, 1 + jaw), (-12, 3.4 + jaw), (-4, 5.6), (1, 6)]
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.12) for l, o in head + [(1, 1)]])
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.1) for l, o in lower + [(1, 1)]])
+        car.poly(bronze, head + [(1, 1)])
+        car.poly(iron, lower + [(1, 1)])
+        car.poly(_lerp_colour((120, 30, 10), furnace, flicker), [(-5, 0.8), (-13, 0.4), (-12.5, 1 + jaw), (-5, 1.4)])
+        for x in (-12.2, -10.6, -9, -7.4):  # iron teeth
+            car.poly(iron_light, [(x, 0.5), (x + 0.5, 1.7), (x + 1, 0.6)])
+        car.line(bronze_dark, -9, -5, -13, -1, 0.5)
+        for rx, ro in ((-3, -5.4), (-7, -4.4), (-10.5, -2.6)):
+            car.dot(bronze_dark, rx, ro, 0.4)
+        # Two iron horns and a gauge for an eye.
+        for base, tip in (((-3, -6.4), (4, -11)), ((-6, -5.8), (-1, -10.5))):
+            car.line(INK, *base, *tip, 1.5)
+            car.line(iron_light, *base, *tip, 0.8)
+        car.dot(INK, -7.4, -3.2, 1.6)
+        car.dot((240, 230, 200), -7.4, -3.2, 1.25)
+        needle = math.sin(t * 3) * 0.8
+        car.line((200, 30, 30), -7.4, -3.2, -7.4 + math.cos(needle - 1.6), -3.2 + math.sin(needle - 1.6), 0.35)
+        # Breath: clouds of steam with a glow of the furnace inside.
+        b = 1.2 + jaw / 2
+        for i in range(4):
+            f = (t * 1.6 + i / 4) % 1.0
+            car.dot(_shade((230, 232, 238), 1 - 0.35 * f), -14 - f * 12, b - f * 2.5 + (i % 2) * 1.5, 1.4 + 2.6 * f)
+        car.dot(_lerp_colour((255, 150, 60), (255, 230, 150), flicker), -14, b, 1.2)
+    if rear:
+        wag = 2.0 * math.sin(t * 2.4)
+        segs = 4
+        for i in range(segs):
+            l0 = L - 0.5 + i * 3.2
+            w = 4.6 - i * 0.9
+            o = wag * i / segs
+            car.poly(INK, [(l0, o - w - 0.6), (l0 + 3.6, o - w + 0.3), (l0 + 3.6, o + w - 0.3), (l0, o + w + 0.6)])
+            car.poly(bronze if i % 2 == 0 else bronze_dark, [(l0, o - w), (l0 + 3.2, o - w + 0.6), (l0 + 3.2, o + w - 0.6), (l0, o + w)])
+            car.dot(bronze_light, l0 + 1.6, o - w + 1, 0.35)
+        end = L - 0.5 + segs * 3.2
+        o = wag
+        car.poly(INK, [(end - 0.4, o - 2.4), (end + 5.6, o), (end - 0.4, o + 2.4)])
+        car.poly(iron_light, [(end, o - 1.8), (end + 4.6, o), (end, o + 1.8)])
+
+
+def _gem_h(car, front, rear, stripe, t, index) -> None:
+    # Amethyst: violets in silver, with small topazes and diamonds.
+    palette = [(230, 190, 255), (170, 100, 230), (126, 56, 190), (84, 28, 140), (200, 140, 245), (56, 14, 100)]
+    _gem(car, front, rear, stripe, t, index, palette, (214, 220, 230), (130, 140, 156), [(255, 190, 40), (240, 250, 255)])
+
+
 DRAW = {
     ("R", "real"): _real_r,
     ("IR", "real"): _real_ir,
@@ -719,7 +1150,17 @@ DRAW = {
     ("R", "gem"): _gem_r,
     ("IR", "gem"): _gem_ir,
     ("M", "real"): _real_m,
+    ("M", "vintage"): _vintage_m,
+    ("M", "modern"): _modern_m,
+    ("M", "future"): _future_m,
+    ("M", "dragon"): _ice_dragon,
+    ("M", "gem"): _gem_m,
     ("H", "real"): _real_h,
+    ("H", "vintage"): _vintage_h,
+    ("H", "modern"): _modern_h,
+    ("H", "future"): _future_h,
+    ("H", "dragon"): _iron_dragon,
+    ("H", "gem"): _gem_h,
 }
 
 
@@ -730,9 +1171,17 @@ def draw_car(screen, a, b, kind: str, skin: str, stripe, index: int, cars: int, 
     draw(Car(screen, a, b, k), index == 0, index == cars - 1, stripe, t, index)
 
 
+# The Customise menu shows long trains shortened to this many carriages, so they stay big enough.
+PREVIEW_CARS = 3
+
+
+def preview_cars(kind: str) -> int:
+    return min(CARS.get(kind, 2), PREVIEW_CARS)
+
+
 def draw_preview(screen, kind: str, skin: str, x: float, y: float, k: float, stripe, t: float, car_len=22.0, gap=3.0) -> None:
-    """A whole train running to the left, its front at (x, y), as in the Customise menu."""
-    cars = CARS.get(kind, 2)
+    """A train running to the left, its front at (x, y), as in the Customise menu."""
+    cars = preview_cars(kind)
     for i in reversed(range(cars)):
         a = (x + i * (car_len + gap) * k, y)
         b = (a[0] + car_len * k, y)
