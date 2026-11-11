@@ -8,6 +8,8 @@ import pygame
 
 from railgame import render, skins
 from railgame.levels import LEVELS, LINE_BLURBS, LINE_NAMES, build_level
+from railgame.netrender import NetRenderer
+from railgame.netsim import NetSimulation
 from railgame.render import (
     BUTTON_ON,
     EAST_COLOUR,
@@ -65,7 +67,10 @@ class Game:
             self.line_key = line_key
         self.level_number = number
         self.info, self.sim = build_level(self.line_key, number)
-        self.renderer = Renderer(self.sim, self.settings.skins)
+        if isinstance(self.sim, NetSimulation):
+            self.renderer = NetRenderer(self.sim, self.settings.skins)
+        else:
+            self.renderer = Renderer(self.sim, self.settings.skins)
         self.speed = DEFAULT_SPEED
         self.paused_speed = DEFAULT_SPEED
         self.toast: str | None = None

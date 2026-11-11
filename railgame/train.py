@@ -46,6 +46,9 @@ TRAIN_TYPES = {
         long_stops=("PIN",),
         long_dwell=300,
     ),
+    # The Linha do Norte in Lisbon (network.py). Fast trains only stop at the big stations.
+    "AP": TrainType("AP", "Alfa Pendular", max_speed=40.0, length=210.0, acceleration=0.7, braking=0.9, stops="loops", dwell_loop=60),
+    "IC": TrainType("IC", "Intercidades", max_speed=33.0, length=210.0, acceleration=0.45, braking=0.7, stops="loops", dwell_loop=60),
 }
 
 
@@ -58,6 +61,7 @@ class Stop:
     served: bool = False  # passengers are on board and the train is ready to leave
     departed_at: float | None = None
     passing: bool = False  # the train runs through without stopping (scheduled passing time)
+    options: tuple[str, ...] = ()  # on a network: the platform tracks it may use, best first
 
 
 @dataclass
@@ -74,6 +78,12 @@ class Train:
     final_delay: float | None = None
     # (position, track) where the front of the train last changed track, newest last.
     track_changes: list[tuple[float, int]] = field(default_factory=list)
+    # Only used on networks (network.py), where tracks have names instead of numbers:
+    origin: str = ""  # where it comes from and where it goes, for the panel
+    destination: str = ""
+    entry_track: str = ""  # the track it appears on
+    exit_tracks: tuple[str, ...] = ()  # the tracks it may leave the map on, best first
+    switches_used: list = field(default_factory=list)  # (switch, old track, new track), newest last
 
     @property
     def kind(self) -> str:

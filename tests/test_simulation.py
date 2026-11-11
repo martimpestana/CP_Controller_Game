@@ -1,6 +1,7 @@
 import pytest
 
 from railgame.levels import all_levels, build_level, clock, make_timetable, TrainPlan
+from railgame.network import Network
 from railgame.simulation import Simulation
 from railgame.track import EAST, LINES, LOOP_HALF, WEST, algarve_faro_tavira
 from railgame.train import Stop, Train
@@ -137,7 +138,11 @@ def test_new_train_waits_while_edge_section_is_busy():
     assert arriving.state == "waiting"
 
 
-@pytest.mark.parametrize("info", all_levels(), ids=lambda info: f"{info.line}{info.number}")
+# The Linha do Norte (several tracks) has its own tests in test_network.py.
+SINGLE_TRACK_LEVELS = [info for info in all_levels() if not isinstance(LINES[info.line](), Network)]
+
+
+@pytest.mark.parametrize("info", SINGLE_TRACK_LEVELS, ids=lambda info: f"{info.line}{info.number}")
 def test_levels_build_and_timetables_are_in_order(info):
     _, sim = build_level(info.line, info.number)
     assert len(sim.trains) == len(info.trains)
@@ -200,7 +205,7 @@ def careful_player_move(sim):
         sim.toggle_signal(request.target_id)
 
 
-@pytest.mark.parametrize("info", all_levels(), ids=lambda info: f"{info.line}{info.number}")
+@pytest.mark.parametrize("info", SINGLE_TRACK_LEVELS, ids=lambda info: f"{info.line}{info.number}")
 def test_careful_player_passes_level(info):
     _, sim = build_level(info.line, info.number)
     for _ in range(5 * 3600):
