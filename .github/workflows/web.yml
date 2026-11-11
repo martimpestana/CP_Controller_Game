@@ -33,7 +33,7 @@ jobs:
           mkdir -p web/cp_controller
           cp -r main.py railgame web/cp_controller/
           cd web
-          pygbag --build cp_controller
+          pygbag --ume_block 0 --build cp_controller
           ls -la cp_controller/build/web
       - name: Keep the build as a download
         uses: actions/upload-artifact@v4
