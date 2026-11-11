@@ -269,8 +269,15 @@ def douro_regua_ferradosa() -> Line:
     return build_line("Linha do Douro", stations, west_edge=-2500, east_edge=49500, geo=geo)
 
 
+def _lisboa():
+    from railgame.network import lisboa_norte  # network.py imports this module
+
+    return lisboa_norte()
+
+
 LINES = {
     "algarve": algarve_faro_tavira,
     "oeste": oeste_torres_caldas,
     "douro": douro_regua_ferradosa,
+    "lisboa": _lisboa,
 }

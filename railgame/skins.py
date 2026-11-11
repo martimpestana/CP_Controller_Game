@@ -18,8 +18,8 @@ from railgame import ui
 
 INK = (8, 10, 14)
 
-TRAIN_TYPES = ("R", "IR", "M", "H")
-TYPE_NAMES = {"R": "Regional", "IR": "Inter-Regional", "M": "Freight", "H": "Historic"}
+TRAIN_TYPES = ("R", "IR", "M", "H", "AP", "IC")
+TYPE_NAMES = {"R": "Regional", "IR": "Inter-Regional", "M": "Freight", "H": "Historic", "AP": "Alfa Pendular", "IC": "Intercidades"}
 
 # (id, name shown in the menu) for each train type, in menu order. The first one is the default.
 SKINS = {
@@ -55,6 +55,22 @@ SKINS = {
         ("dragon", "Iron dragon"),
         ("gem", "Amethyst"),
     ],
+    "AP": [
+        ("real", "Real"),
+        ("vintage", "Foguete"),
+        ("modern", "Modern"),
+        ("future", "Futuristic"),
+        ("dragon", "Storm dragon"),
+        ("gem", "Sapphire"),
+    ],
+    "IC": [
+        ("real", "Real"),
+        ("vintage", "Sud Express"),
+        ("modern", "Modern"),
+        ("future", "Futuristic"),
+        ("dragon", "Sea serpent"),
+        ("gem", "Topaz"),
+    ],
 }
 
 DEFAULT_SKINS = {kind: SKINS[kind][0][0] for kind in TRAIN_TYPES}
@@ -65,10 +81,13 @@ EXTENT = {("R", "dragon"): (23, 19), ("IR", "dragon"): (30, 19), ("R", "modern")
           ("R", "gem"): (5, 5), ("IR", "gem"): (5, 5), ("R", "vintage"): (2, 0), ("IR", "vintage"): (3, 0),
           ("M", "vintage"): (3, 0), ("M", "modern"): (4, 0), ("M", "future"): (12, 5), ("M", "dragon"): (29, 19), ("M", "gem"): (5, 5),
           ("H", "real"): (3, 0), ("H", "vintage"): (3, 0), ("H", "modern"): (4, 0), ("H", "future"): (12, 8), ("H", "dragon"): (30, 18),
-          ("H", "gem"): (5, 5)}
+          ("H", "gem"): (5, 5),
+          ("AP", "real"): (10, 10), ("AP", "vintage"): (6, 6), ("AP", "modern"): (10, 10), ("AP", "future"): (12, 8),
+          ("AP", "dragon"): (27, 20), ("AP", "gem"): (5, 5), ("IC", "vintage"): (3, 0), ("IC", "modern"): (4, 0),
+          ("IC", "future"): (12, 8), ("IC", "dragon"): (20, 17), ("IC", "gem"): (5, 5)}
 
 # How many carriages each type has on the map.
-CARS = {"R": 2, "IR": 3, "M": 6, "H": 4}
+CARS = {"R": 2, "IR": 3, "M": 6, "H": 4, "AP": 3, "IC": 3}
 
 
 class Car:
@@ -1136,6 +1155,344 @@ def _gem_h(car, front, rear, stripe, t, index) -> None:
     _gem(car, front, rear, stripe, t, index, palette, (214, 220, 230), (130, 140, 156), [(255, 190, 40), (240, 250, 255)])
 
 
+# ---------------------------------------------------------------------- Alfa Pendular (AP) and Intercidades (IC)
+
+
+def _tilting_nose(car, sign, x0, body, lower, glass, accent, light) -> None:
+    """The long, low nose of a fast electric train, at the front (sign 1) or the rear (-1)."""
+
+    def P(dl, o):
+        return (x0 - sign * dl, o)
+
+    car.poly(INK, [P(0, -7.5), P(3, -7), P(6.5, -4.5), P(9, -1), P(9.6, 2.2), P(8.6, 5.2), P(5, 7.5), P(0, 7.5)])
+    car.poly(body, [P(0, -6), P(2.8, -5.6), P(6, -3.6), P(8.2, -0.6), P(8.6, 2.2), P(7.8, 4.6), P(4.6, 6), P(0, 6)])
+    car.poly(lower, [P(0, 2.6), P(8.5, 2.6), P(7.8, 4.6), P(4.6, 6), P(0, 6)])
+    car.poly(glass, [P(1.5, -5), P(3.4, -4.6), P(6, -2.6), P(7.2, -0.6), P(2.8, -0.6)])
+    car.line((150, 180, 210), x0 - sign * 3.0, -4.4, x0 - sign * 5.6, -1.2, 0.4)
+    car.line(accent, x0 - sign * 0.2, 1.8, x0 - sign * 8.6, 1.8, 0.6)
+    car.dot(light, x0 - sign * 7.6, 3.4, 0.75)
+
+
+def _real_ap(car, front, rear, stripe, t, index) -> None:
+    # The CP Alfa Pendular: a white tilting train with a grey skirt, a red line and dark windows.
+    L = car.length
+    white, grey, red, glass = (240, 242, 246), (150, 156, 166), (200, 30, 44), (34, 44, 62)
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-6, 6, 0, L, white)
+    car.band(-6, -5, 0.3, L - 0.3, (200, 206, 214))
+    car.band(2.6, 6, 0, L, grey)
+    car.band(1.6, 2.2, 0, L, red)
+    _windows(car, False, False, glass, o0=-3.6, o1=0.4, step=3.4, size=2.4, start=2.0, end=L - 2.0)
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if index == 1:
+        _pantograph(car, L * 0.5, t)
+    if front:
+        _tilting_nose(car, 1, 0, white, grey, glass, red, (255, 244, 200))
+    if rear:
+        _tilting_nose(car, -1, L, white, grey, glass, red, (255, 60, 60))
+
+
+def _real_ic(car, front, rear, stripe, t, index) -> None:
+    # A red electric locomotive pulling stainless-steel Intercidades coaches.
+    L = car.length
+    if index == 0:
+        car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+        car.band(-6, 6, 0, L, (196, 34, 40))
+        car.band(-6, -4.8, 0.3, L - 0.3, (110, 116, 126))
+        car.poly((240, 240, 244), [(L * 0.25, 6), (L * 0.45, -2), (L * 0.6, -2), (L * 0.4, 6)])  # white flash
+        car.band(-4.6, -0.8, 1, 5, (34, 44, 62))  # cab window
+        car.band(-4.6, -0.8, L - 5, L - 1, (34, 44, 62))
+        for x in range(int(L * 0.62), int(L) - 6, 2):
+            car.line((140, 20, 26), x, -3.6, x, 0.4, 0.5)  # grilles
+        car.dot((255, 244, 200), 1.2, 3.6, 0.8)
+        car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+        _pantograph(car, L * 0.5, t)
+        return
+    _base(car, (204, 208, 214), (150, 156, 166), stripe)
+    for o in (-1.6, 2.4, 3.8):
+        car.line((172, 178, 186), 0.5, o, L - 0.5, o, 0.45)
+    car.band(-3.8, 0.4, 1.2, L - 1.2, (60, 66, 78))  # the dark window band
+    _windows(car, False, False, (40, 52, 70), o0=-3.4, o1=0.0, step=3.6, size=2.6, start=1.8, end=L - 1.8)
+    car.band(1.0, 1.6, 0, L, (200, 40, 48))
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 4.0, 0.8)
+
+
+def _vintage_ap(car, front, rear, stripe, t, index) -> None:
+    """AP: the Foguete, the 1950s express railcar from Lisbon to Porto: shiny ribbed steel, a red
+    band, round headlights and a rounded nose."""
+    L = car.length
+    steel, rib, red = (196, 200, 206), (160, 166, 174), (180, 34, 40)
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-6, 6, 0, L, steel)
+    for o in (-4.4, -0.2, 3.2, 4.4):
+        car.line(rib, 0.4, o, L - 0.4, o, 0.4)
+    car.band(0.6, 2.4, 0, L, red)
+    _windows(car, False, False, (50, 56, 66), o0=-3.6, o1=-0.6, step=3.8, size=2.8, start=2.0, end=L - 2.0)
+    pos = 2.0
+    while pos + 2.8 <= L - 2.0:  # little rounded tops on the windows
+        car.line((230, 232, 236), pos + 0.4, -3.7, pos + 2.4, -3.7, 0.35)
+        pos += 3.8
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    for end, sign in ((front, 1), (rear, -1)):
+        if not end:
+            continue
+        x0 = 0 if sign == 1 else L
+
+        def P(dl, o):
+            return (x0 - sign * dl, o)
+
+        car.poly(INK, [P(0, -7.5), P(3, -7), P(5, -4), P(5.6, 0), P(5, 4), P(3, 7.5), P(0, 7.5)])
+        car.poly(steel, [P(0, -6), P(2.6, -5.6), P(4.2, -3.4), P(4.6, 0), P(4.2, 3.6), P(2.6, 6), P(0, 6)])
+        car.poly(red, [P(0, 0.6), P(4.6, 0.6), P(4.4, 2.4), P(0, 2.4)])
+        car.poly((50, 56, 66), [P(0.8, -4.8), P(2.6, -4.6), P(3.8, -2.6), P(3.9, -1), P(0.8, -1)])
+        car.dot((255, 236, 170) if sign == 1 else (230, 60, 50), x0 - sign * 3.4, 3.8, 0.9)
+
+
+def _vintage_ic(car, front, rear, stripe, t, index) -> None:
+    """IC: the Sud Express of old: a blue steam engine and dark blue sleeping cars with gold lines."""
+    L = car.length
+    gold = (214, 178, 90)
+    if index == 0:
+        _steam_loco(car, stripe, t, boiler=(28, 44, 92), cab=(34, 52, 104), trim=gold, wheel=(160, 36, 36))
+        return
+    navy = (26, 36, 78)
+    _base(car, navy, (60, 54, 50), stripe)
+    car.line(gold, 0.6, -4.2, L - 0.6, -4.2, 0.4)
+    car.line(gold, 0.6, 1.4, L - 0.6, 1.4, 0.4)
+    car.line(gold, 0.6, 4.6, L - 0.6, 4.6, 0.4)
+    _windows(car, False, False, (240, 214, 140), o0=-3.4, o1=-0.6, step=3.2, size=2.0, start=2, end=L - 2)
+    m = L / 2  # a crest in the middle
+    car.dot(gold, m, 3.0, 1.0)
+    car.dot(navy, m, 3.0, 0.5)
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 3.8, 0.8)
+
+
+def _modern_ap(car, front, rear, stripe, t, index) -> None:
+    """AP: a new high-speed train in graphite and lime, with a band of light along the side."""
+    L = car.length
+    body, dark, lime, glass = (70, 76, 86), (36, 40, 48), (170, 236, 60), (18, 24, 34)
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-6, 6, 0, L, body)
+    car.band(-6, -5, 0.3, L - 0.3, (110, 116, 126))
+    car.band(2.4, 6, 0, L, dark)
+    car.band(-3.8, 0.6, 1, L - 1, glass)
+    x = 1 + ((t * 7 + index * 4) % 8.0)
+    while x < L - 2:
+        car.poly((60, 80, 106), [(x, -3.8), (x + 1.2, -3.8), (x - 0.2, 0.6), (x - 1.4, 0.6)])
+        x += 8.0
+    glow = 0.6 + 0.4 * math.sin(t * 3 + index)
+    car.band(1.3, 2.0, 0, L, _lerp_colour(_shade(lime, 0.5), lime, glow))
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if index == 1:
+        _pantograph(car, L * 0.5, t)
+    if front:
+        _tilting_nose(car, 1, 0, body, dark, glass, lime, (230, 255, 200))
+    if rear:
+        _tilting_nose(car, -1, L, body, dark, glass, lime, (255, 60, 60))
+
+
+def _modern_ic(car, front, rear, stripe, t, index) -> None:
+    """IC: a white and green electric locomotive with double-deck coaches."""
+    L = car.length
+    if index == 0:
+        _electric_loco(car, stripe, t, (236, 240, 244), (40, 140, 90), (40, 140, 90))
+        return
+    white, green, glass = (238, 240, 244), (40, 140, 90), (34, 46, 64)
+    _base(car, white, (180, 186, 196), stripe)
+    car.band(-6.6, -6, 2, L - 2, INK)
+    car.band(-7, -6, 2.4, L - 2.4, white)  # the taller upper deck
+    _windows(car, False, False, glass, o0=-5.4, o1=-3.2, step=3.0, size=2.2, start=1.6, end=L - 1.6)
+    _windows(car, False, False, glass, o0=-1.6, o1=0.6, step=3.0, size=2.2, start=1.6, end=L - 1.6)
+    car.band(2.2, 4.6, 0, L, green)
+    car.band(-2.8, -2.2, 0, L, green)
+    if rear:
+        car.dot((230, 60, 50), L - 1.2, 4.0, 0.8)
+
+
+def _future_ap(car, front, rear, stripe, t, index) -> None:
+    _future(car, front, rear, stripe, t, index, (90, 170, 255), (235, 245, 255), True)
+
+
+def _future_ic(car, front, rear, stripe, t, index) -> None:
+    _future(car, front, rear, stripe, t, index, (255, 60, 170), (110, 255, 230), False)
+
+
+def _bolt(car, x0, o0, x1, o1, colour, width, seed) -> None:
+    """A zigzag lightning bolt from (x0, o0) to (x1, o1)."""
+    pts = [(x0, o0)]
+    for i in range(1, 5):
+        f = i / 5
+        jag = 1.2 * math.sin(seed * 7.1 + i * 2.3)
+        pts.append((x0 + (x1 - x0) * f + jag * 0.4, o0 + (o1 - o0) * f + jag))
+    pts.append((x1, o1))
+    for a, b in zip(pts, pts[1:]):
+        car.line(colour, *a, *b, width)
+
+
+def _storm_dragon(car, front, rear, stripe, t, index) -> None:
+    """AP: a storm dragon, midnight blue and violet, with swept-back wings that crackle with
+    lightning, glowing blue eyes and a breath of lightning."""
+    L = car.length
+    body, dark, light = (44, 52, 120), (24, 26, 70), (96, 110, 200)
+    belly, spark = (150, 160, 230), (190, 230, 255)
+    flash = math.sin(t * 9 + index * 2.1) > 0.6
+    if index == 1:  # wings swept back over the middle carriage
+        flap = math.sin(t * 2.6)
+        tip = (L + 6, -17 - 2 * flap)
+        wing = [(L * 0.15, -6), (L * 0.4, -14 - 2 * flap), tip, (L * 0.9, -9), (L * 0.6, -10), (L * 0.35, -7.5)]
+        car.poly(INK, [(l, o - 0.8) for l, o in wing])
+        car.poly(dark, wing)
+        car.poly(light, [(L * 0.4, -14 - 2 * flap), tip, (L * 0.75, -12 - flap)])
+        for f in (0.4, 0.65, 0.9):
+            car.line(body, L * 0.4, -14 - 2 * flap, L * f + 2, -8.5, 0.5)
+        if flash:
+            _bolt(car, L * 0.4, -14 - 2 * flap, L + 4, -16 - 2 * flap, spark, 0.5, t)
+    # Ridge of blade-like spines.
+    x = 2.0
+    while x < L - 1:
+        car.poly(INK, [(x - 1.8, -5.6), (x + 1.4, -9.4), (x + 1.8, -5.6)])
+        car.poly(light, [(x - 1.2, -5.8), (x + 1.2, -8.6), (x + 1.3, -5.8)])
+        x += 4.0
+    car.band(-7.5, 7.5, -0.5, L + 0.5, INK)
+    car.band(-6, 6, 0, L, body)
+    car.band(-6, -4.4, 0, L, dark)
+    # Scales as chevrons pointing back, and a pale belly.
+    for row, o in enumerate((-3.4, -1.0)):
+        x = 0.6 + row * 1.5
+        while x < L - 2.5:
+            car.line(light, x, o, x + 1.5, o + 1.0, 0.45)
+            car.line(light, x + 1.5, o + 1.0, x, o + 2.0, 0.45)
+            x += 3.0
+    car.band(2.2, 6, 0, L, belly)
+    for xx in range(1, int(L), 2):
+        car.line(light, xx, 2.2, xx, 6, 0.35)
+    # Lightning running along the body now and then.
+    if flash:
+        _bolt(car, 0.5, -1.5, L - 0.5, 0.5, spark, 0.45, t + index)
+    car.band(5.2, 6.8, 0.5, L - 0.5, stripe)
+    if front:
+        head = [(1, -6), (-3, -6.6), (-7, -5.4), (-11, -3), (-13.5, -1), (-13.5, 0.6), (-9, 1.4), (-13, 2.6),
+                (-12, 4.4), (-6, 5.4), (1, 6)]
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.12) for l, o in head])
+        car.poly(body, head)
+        car.poly(belly, [(-9, 1.4), (-13, 2.6), (-12, 4.4), (-6, 5.4), (-4, 2.6)])
+        for base, tip in (((-4, -6.2), (3, -12)), ((-7, -5.2), (-2, -11.5))):  # swept horns
+            car.line(INK, *base, *tip, 1.4)
+            car.line(light, *base, *tip, 0.7)
+        eye = 0.6 + 0.4 * math.sin(t * 6)
+        car.dot(INK, -7.6, -2.8, 1.3)
+        car.dot(_lerp_colour((60, 140, 255), (220, 245, 255), eye), -7.6, -2.8, 1.0)
+        # Breath of lightning.
+        for i in range(3):
+            if math.sin(t * 11 + i * 2.2) > -0.2:
+                end = (-13.5 - 9 - 4 * math.sin(t * 5 + i), 1.6 + (i - 1) * 3 * math.sin(t * 3 + i))
+                _bolt(car, -13.5, 1.6, end[0], end[1], spark if i else (255, 255, 255), 0.5, t * 3 + i)
+        car.dot((220, 240, 255), -13.8, 1.6, 0.9)
+    if rear:
+        wag = 2.0 * math.sin(t * 2.5)
+        tail = [(L - 0.5, -5), (L + 6, -2.6 + wag * 0.4), (L + 12, -0.4 + wag), (L + 12, 0.8 + wag),
+                (L + 6, 2.8 + wag * 0.4), (L - 0.5, 5)]
+        car.poly(INK, [(l, o * 1.18) for l, o in tail])
+        car.poly(body, tail)
+        tip = [(L + 11.5, wag), (L + 15, -3 + wag), (L + 13.5, 0.2 + wag), (L + 15, 3.4 + wag)]
+        car.poly(INK, [(l + 0.4, o * 1.1) for l, o in tip])
+        car.poly(light, tip)
+        if flash:
+            _bolt(car, L + 12, wag, L + 19, -3 + wag, spark, 0.45, t)
+
+
+def _sea_serpent(car, front, rear, stripe, t, index) -> None:
+    """IC: a sea serpent from the old maps of the Portuguese navigators: teal and turquoise,
+    with fins, rolling through waves of foam, spouting water."""
+    L = car.length
+    teal, dark, light = (24, 140, 140), (10, 86, 96), (110, 214, 200)
+    belly, fin, foam = (226, 214, 160), (240, 120, 80), (236, 250, 255)
+
+    def centre(l):
+        return 0.4 + 1.4 * math.sin((l + index * (L + 3)) / 6.0 - t * 2.4)
+
+    steps = [i * L / 16 for i in range(17)]
+    top = [(l, centre(l) - 4.4) for l in steps]
+    bottom = [(l, centre(l) + 4.4) for l in steps]
+    # Fins along the back, like a fish.
+    for i, l in enumerate(steps[2:-1:4]):
+        c = centre(l) - 4.2
+        sway = 0.8 * math.sin(t * 4 + i)
+        car.poly(INK, [(l - 2.4, c + 0.6), (l + 1.6 + sway, c - 5.2), (l + 2.6, c + 0.6)])
+        car.poly(fin, [(l - 1.8, c + 0.4), (l + 1.4 + sway, c - 4.4), (l + 2.0, c + 0.4)])
+        for k in (-0.8, 0.4):
+            car.line(_shade(fin, 0.7), l + k, c + 0.2, l + k + 1.2 + sway * 0.6, c - 3.2, 0.3)
+    car.poly(INK, [(l, o - 1) for l, o in top] + [(l, o + 1) for l, o in reversed(bottom)])
+    car.poly(teal, top + list(reversed(bottom)))
+    car.poly(belly, [(l, centre(l) + 1.8) for l in steps] + list(reversed(bottom)))
+    for l in steps[1:-1]:
+        car.line(_shade(belly, 0.75), l, centre(l) + 2.0, l, centre(l) + 4.2, 0.35)
+    # Round scales, light on top.
+    for row, (off, colour) in enumerate(((-3.0, light), (-0.8, dark))):
+        x = 1.0 + row * 1.4
+        while x < L - 1.5:
+            c = centre(x) + off
+            car.poly(colour, [(x, c), (x + 0.7, c + 1.1), (x + 1.4, c)])
+            x += 2.8
+    # Foam where it cuts through the waves.
+    for i in range(4):
+        l = (i + 0.5) * L / 4
+        c = centre(l) + 5.2
+        bob = 0.6 * math.sin(t * 5 + i + index)
+        car.dot(foam, l - 1.2, c + bob, 1.0)
+        car.dot(foam, l + 0.4, c + 0.4 - bob, 0.8)
+    car.band(6.0, 7.0, 0.5, L - 0.5, stripe)
+    if front:
+        c = centre(0)
+        head = [(1, c - 4.4), (-3, c - 5.4), (-8, c - 4.6), (-12, c - 2.6), (-13.5, c - 0.6), (-12.5, c + 1.6),
+                (-8, c + 3.6), (-3, c + 4.8), (1, c + 4.4)]
+        car.poly(INK, [(l * 1.06 - 0.3, o * 1.12) for l, o in head])
+        car.poly(teal, head)
+        car.poly(belly, [(-12.5, c + 1.6), (-8, c + 3.6), (-3, c + 4.8), (-3, c + 2), (-11, c + 0.8)])
+        car.line(dark, -13, c + 0.6, -6, c + 1.4, 0.5)  # the mouth
+        # A fin crest and whiskers like a catfish.
+        car.poly(INK, [(-2, c - 5), (-6, c - 10), (-8.4, c - 4.4)])
+        car.poly(fin, [(-2.6, c - 5), (-6, c - 9), (-7.8, c - 4.6)])
+        sway = math.sin(t * 3)
+        for o0, bend in ((0.4, -1), (1.2, 1)):
+            pts = [(-12.8 - i * 1.8, c + o0 + bend * i * 0.6 + sway * i * 0.3) for i in range(5)]
+            for a, b in zip(pts, pts[1:]):
+                car.line(INK, *a, *b, 0.8)
+                car.line(fin, *a, *b, 0.45)
+        car.dot(INK, -8, c - 2, 1.4)
+        car.dot((255, 220, 90), -8, c - 2, 1.05)
+        car.dot(INK, -8.2, c - 2, 0.45)
+        # A spout of water from its head, rising and falling.
+        h = 6 + 3 * (0.5 + 0.5 * math.sin(t * 2))
+        for i in range(5):
+            f = i / 4
+            car.dot(foam, -4 + 4 * math.sin(f * 3 + t), c - 5 - h * (1 - abs(1 - 2 * f) * 0.3) - f * 2, 1.2 - f * 0.5)
+        car.dot(foam, -4, c - 5 - h, 1.6)
+    if rear:
+        c = centre(L)
+        wag = 2.0 * math.sin(t * 2.8)
+        tail = [(L - 0.5, c - 4.2), (L + 6, c - 2 + wag * 0.5), (L + 11, c + wag), (L + 6, c + 2.4 + wag * 0.5), (L - 0.5, c + 4.2)]
+        car.poly(INK, [(l, o * 1.15) for l, o in tail])
+        car.poly(teal, tail)
+        fluke = [(L + 10, c + wag), (L + 16, c - 5 + wag), (L + 14, c + wag), (L + 16, c + 5 + wag)]
+        car.poly(INK, [(l + 0.5, o * 1.1) for l, o in fluke])
+        car.poly(fin, fluke)
+
+
+def _gem_ap(car, front, rear, stripe, t, index) -> None:
+    # Sapphire: deep blues in silver, with small diamonds and rubies.
+    palette = [(150, 190, 255), (60, 110, 230), (30, 70, 190), (16, 40, 130), (100, 150, 245), (10, 24, 90)]
+    _gem(car, front, rear, stripe, t, index, palette, (214, 220, 230), (130, 140, 156), [(240, 250, 255), (220, 40, 70)])
+
+
+def _gem_ic(car, front, rear, stripe, t, index) -> None:
+    # Topaz: warm golds and oranges in rose gold, with small sapphires.
+    palette = [(255, 230, 150), (250, 180, 60), (230, 130, 30), (180, 90, 20), (255, 206, 100), (130, 60, 10)]
+    _gem(car, front, rear, stripe, t, index, palette, (232, 170, 150), (170, 110, 96), [(40, 90, 220), (240, 250, 255)])
+
+
 DRAW = {
     ("R", "real"): _real_r,
     ("IR", "real"): _real_ir,
@@ -1161,6 +1518,18 @@ DRAW = {
     ("H", "future"): _future_h,
     ("H", "dragon"): _iron_dragon,
     ("H", "gem"): _gem_h,
+    ("AP", "real"): _real_ap,
+    ("AP", "vintage"): _vintage_ap,
+    ("AP", "modern"): _modern_ap,
+    ("AP", "future"): _future_ap,
+    ("AP", "dragon"): _storm_dragon,
+    ("AP", "gem"): _gem_ap,
+    ("IC", "real"): _real_ic,
+    ("IC", "vintage"): _vintage_ic,
+    ("IC", "modern"): _modern_ic,
+    ("IC", "future"): _future_ic,
+    ("IC", "dragon"): _sea_serpent,
+    ("IC", "gem"): _gem_ic,
 }
 
 

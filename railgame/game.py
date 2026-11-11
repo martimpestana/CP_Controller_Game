@@ -8,6 +8,8 @@ import pygame
 
 from railgame import render, skins
 from railgame.levels import LEVELS, LINE_BLURBS, LINE_NAMES, build_level
+from railgame.netrender import NetRenderer
+from railgame.netsim import NetSimulation
 from railgame.render import (
     BUTTON_ON,
     EAST_COLOUR,
@@ -72,7 +74,10 @@ class Game:
             self.line_key = line_key
         self.level_number = number
         self.info, self.sim = build_level(self.line_key, number)
-        self.renderer = Renderer(self.sim, self.settings.skins)
+        if isinstance(self.sim, NetSimulation):
+            self.renderer = NetRenderer(self.sim, self.settings.skins)
+        else:
+            self.renderer = Renderer(self.sim, self.settings.skins)
         self.speed = DEFAULT_SPEED
         self.paused_speed = DEFAULT_SPEED
         self.toast: str | None = None
@@ -354,13 +359,13 @@ class Game:
         y = 120
         # One tab per type of train; the skins of the chosen type are shown below.
         for i, kind in enumerate(skins.TRAIN_TYPES):
-            rect = SR(80 + i * 285, y, 270, 44)
+            rect = SR(80 + i * 190, y, 180, 44)
             chosen = kind == self.customise_kind
             hovered = rect.collidepoint(mouse)
             pygame.draw.rect(s, BUTTON_ON if chosen else render.LAND, rect, border_radius=S(10))
             if hovered and not chosen:
                 pygame.draw.rect(s, MUTED, rect, S(3), border_radius=S(10))
-            label = self.f_head.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE if chosen else TEXT)
+            label = self.f_text.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE if chosen else TEXT)
             s.blit(label, label.get_rect(center=rect.center))
             self.buttons.append((rect, f"tab:{kind}"))
         y += 64

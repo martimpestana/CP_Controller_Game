@@ -8,10 +8,13 @@ import pygame
 import pytest
 
 from railgame.layout import Layout
+from railgame.network import Network
 from railgame.track import LINES
 
+SINGLE_TRACK = [key for key, make in LINES.items() if not isinstance(make(), Network)]
 
-@pytest.mark.parametrize("key", LINES)
+
+@pytest.mark.parametrize("key", SINGLE_TRACK)
 def test_track_is_continuous_on_screen(key):
     line = LINES[key]()
     layout = Layout(line, (40, 100, 800, 400))
@@ -20,7 +23,7 @@ def test_track_is_continuous_on_screen(key):
     assert biggest_jump < 10
 
 
-@pytest.mark.parametrize("key", LINES)
+@pytest.mark.parametrize("key", SINGLE_TRACK)
 def test_track_two_joins_track_one_at_the_points(key):
     line = LINES[key]()
     layout = Layout(line, (40, 100, 800, 400))
@@ -28,7 +31,7 @@ def test_track_two_joins_track_one_at_the_points(key):
         assert math.dist(layout.point(p.pos, 1), layout.point(p.pos, 2)) < 0.5
 
 
-@pytest.mark.parametrize("key", LINES)
+@pytest.mark.parametrize("key", SINGLE_TRACK)
 def test_station_boxes_never_overlap(key):
     line = LINES[key]()
     layout = Layout(line, line.geo.map_box or (40, 176, 820, 414))

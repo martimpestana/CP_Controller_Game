@@ -199,6 +199,8 @@ def train_colour(train: Train) -> tuple[int, int, int]:
 
 
 class Renderer:
+    first_level = False  # level 1 of a line shows a few tips (set in draw)
+
     def __init__(self, sim: Simulation, train_skins: dict[str, str] | None = None):
         self.sim = sim
         self.skins = train_skins or dict(skins.DEFAULT_SKINS)
@@ -215,7 +217,6 @@ class Renderer:
         self.menu_button: pygame.Rect | None = None
         self.request_buttons: list[tuple[pygame.Rect, Request]] = []
         self.train_boxes: list[tuple[pygame.Rect, Train]] = []
-        self.first_level = False
         self._prepare_background()
 
     # ------------------------------------------------------------------ positions used for clicks
@@ -865,12 +866,16 @@ class Renderer:
         self._draw_next_trains(screen)
         self._draw_legend(screen)
         self._draw_hover(screen, hover)
-        if toast:  # why the last click was refused
-            text = self.f_bold.render(toast, True, WHITE)
-            box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 32))).inflate(S(28), S(18))
-            pygame.draw.rect(screen, (110, 36, 36), box, border_radius=S(8))
-            pygame.draw.rect(screen, RED, box, max(1, S(2)), border_radius=S(8))
-            screen.blit(text, text.get_rect(center=box.center))
+        if toast:
+            self._draw_toast(screen, toast)
+
+    def _draw_toast(self, screen, toast: str) -> None:
+        """Why the last click was refused, at the top of the map."""
+        text = self.f_bold.render(toast, True, WHITE)
+        box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 32))).inflate(S(28), S(18))
+        pygame.draw.rect(screen, (110, 36, 36), box, border_radius=S(8))
+        pygame.draw.rect(screen, RED, box, max(1, S(2)), border_radius=S(8))
+        screen.blit(text, text.get_rect(center=box.center))
 
     def _draw_animated(self, screen, speed: int) -> None:
         """What moves on the storybook map. By day the little waves rock while the trains run
