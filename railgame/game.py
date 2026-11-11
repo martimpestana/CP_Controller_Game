@@ -274,19 +274,22 @@ class Game:
         )
         s.blit(sub, (S(80), S(118)))
         s.blit(self.f_head.render("Choose a line", True, WHITE), (S(80), S(180)))
-        y = 220
+        # The cards share the height left under the title, so more lines still fit.
+        y, gap = 220, 12
+        card = min(110, (HEIGHT - 20 - y - gap * (len(LEVELS) - 1)) // len(LEVELS))
         for i, (key, levels) in enumerate(LEVELS.items(), 1):
-            rect = SR(80, y, 640, 110)
+            rect = SR(80, y, 640, card)
             hovered = rect.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(s, render.BUTTON if hovered else render.CARD, rect, border_radius=S(10))
             where, trains = LINE_BLURBS.get(key, ("", ""))
             s.blit(self.f_head.render(f"{i} · {LINE_NAMES[key]}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
             s.blit(self.f_text.render(where, True, MUTED), (rect.x + S(20), rect.y + S(46)))
-            s.blit(self.f_text.render(f"Trains: {trains}", True, TEXT), (rect.x + S(20), rect.y + S(74)))
+            if card >= 100:
+                s.blit(self.f_text.render(f"Trains: {trains}", True, TEXT), (rect.x + S(20), rect.y + S(74)))
             meta = self.f_small.render(f"{len(levels)} levels", True, MUTED)
             s.blit(meta, (rect.right - meta.get_width() - S(20), rect.y + S(18)))
             self.buttons.append((rect, f"line:{key}"))
-            y += 126
+            y += card + gap
 
         help_x = 780
         s.blit(self.f_head.render("How it works", True, WHITE), (S(help_x), S(180)))
@@ -309,9 +312,10 @@ class Game:
         ]
         for i, tip in enumerate(tips):
             s.blit(self.f_text.render(tip, True, TEXT), (S(help_x), S(220 + i * 24)))
-        self.button(SR(80, HEIGHT - 70, 180, 44), "Customise", "customise")
+        # Under "How it works", so the list of lines has the whole left column.
+        self.button(SR(help_x, HEIGHT - 70, 180, 44), "Customise", "customise")
         if not IN_BROWSER:  # a web page is closed with the browser tab instead
-            self.button(SR(280, HEIGHT - 70, 120, 44), "Quit", "quit")
+            self.button(SR(help_x + 200, HEIGHT - 70, 120, 44), "Quit", "quit")
 
     def draw_levels(self) -> None:
         """The levels of the chosen line, from the first shift to the hardest one."""
