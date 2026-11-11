@@ -96,7 +96,10 @@ SB_NIGHT = dict(
     SB_ROOF=(118, 62, 46), SB_TURBINE=(150, 154, 166),
 )
 LIT_WINDOW = (255, 214, 110)
-MAP_MODE = "night"  # "day" or "night" for the Day and Night themes, otherwise None (set by apply_theme)
+# The themes that get the storybook map. Sunset and Control room draw the day or the night map
+# and then colour it every frame (see grade_map), so the moving parts get the same look.
+STORYBOOK_MODES = ("day", "night", "sunset", "retro")
+MAP_MODE = "night"  # the theme id when it is one of STORYBOOK_MODES, otherwise None (set by apply_theme)
 SB_OCEAN_TEXT = (24, 96, 136)
 TRACK = (190, 196, 204)
 TRACK_DIM = (95, 104, 115)
@@ -147,7 +150,7 @@ def apply_theme(colours: dict[str, tuple[int, int, int]]) -> None:
     from railgame.themes import THEMES
 
     name = next((tid for tid, c in THEMES.items() if c == colours), None)
-    MAP_MODE = name if name in ("day", "night") else None
+    MAP_MODE = name if name in STORYBOOK_MODES else None
 
 
 _glow_cache: dict = {}
@@ -172,6 +175,87 @@ def map_is_ready(line_name: str) -> bool:
     return _background_key(line_name) in _background_cache
 
 
+
+
+_grade_cache: dict = {}
+
+
+def _grade_overlay(mode: str, size: tuple[int, int]) -> pygame.Surface:
+    """The light laid over the whole map: a warm sky for the sunset, scan lines for the control room."""
+    key = (mode, size)
+    overlay = _grade_cache.get(key)
+    if overlay is not None:
+        return overlay
+    w, h = size
+    overlay = pygame.Surface(size, pygame.SRCALPHA)
+    if mode == "sunset":
+        # Orange light from the top of the map fading to a violet dusk at the bottom.
+        top, bottom = (255, 150, 70), (120, 60, 150)
+        for y in range(h):
+            t = y / max(1, h - 1)
+            colour = tuple(round(a + (b - a) * t) for a, b in zip(top, bottom))
+            overlay.fill((*colour, round(70 - 20 * t)), (0, y, w, 1))
+        # The low sun, glowing in the top right corner (drawn apart, then blended in).
+        sun = pygame.Surface(size, pygame.SRCALPHA)
+        for k in range(32, 0, -1):
+            a = round(46 * (1 - k / 32) ** 1.5)
+            pygame.draw.circle(sun, (255, 214, 140, a), (w, 0), h * 0.9 * k / 32)
+        overlay.blit(sun, (0, 0))
+    else:  # retro: the scan lines and the grid of an old green monitor
+        step = max(2, S(3))
+        for y in range(0, h, step):
+            overlay.fill((0, 0, 0, 70), (0, y, w, max(1, step // 3)))
+        grid = S(40)
+        for x in range(0, w, grid):
+            overlay.fill((80, 255, 120, 14), (x, 0, 1, h))
+        for y in range(0, h, grid):
+            overlay.fill((80, 255, 120, 14), (0, y, w, 1))
+    _grade_cache[key] = overlay
+    return overlay
+
+
+SUNSET_TINT = (255, 206, 170)
+RETRO_TINT, RETRO_FLOOR = (120, 255, 150), (0, 22, 8)
+GRADE: str | None = None  # "sunset" or "retro" while such a map is shown (set by the renderer)
+
+
+def grade_colour(colour, mode: str | None):
+    """A colour as it looks on the Sunset or Control room map (the same sums as grade_map)."""
+    if mode == "sunset":
+        return tuple(c * t // 255 for c, t in zip(colour[:3], SUNSET_TINT))
+    if mode == "retro":
+        r, g, b = colour[:3]
+        grey = (r * 299 + g * 587 + b * 114) // 1000
+        return tuple(min(255, grey * t // 255 + f) for t, f in zip(RETRO_TINT, RETRO_FLOOR))
+    return colour
+
+
+def gc(colour):
+    """Colour of something that moves on the map, graded like the map under it."""
+    return grade_colour(colour, GRADE) if GRADE else colour
+
+
+def grade_map(surf: pygame.Surface, mode: str | None) -> None:
+    """Give the drawn map the Sunset or Control room colours. Done once, on the background;
+    what moves is drawn with gc() colours, and the overlay (see map_overlay) goes on every frame."""
+    if mode not in ("sunset", "retro"):
+        return
+    area = surf.subsurface(SR(0, TOP_BAR, PANEL_X, HEIGHT - TOP_BAR).clip(surf.get_rect()))
+    if mode == "sunset":
+        area.fill(SUNSET_TINT, special_flags=pygame.BLEND_RGB_MULT)
+    else:
+        grey = pygame.transform.grayscale(area)
+        grey.fill(RETRO_TINT, special_flags=pygame.BLEND_RGB_MULT)
+        grey.fill(RETRO_FLOOR, special_flags=pygame.BLEND_RGB_ADD)
+        area.blit(grey, (0, 0))
+
+
+def map_overlay(screen: pygame.Surface, mode: str | None) -> None:
+    """The sunset sky light or the control room scan lines, over the map and what moves on it."""
+    if mode not in ("sunset", "retro"):
+        return
+    rect = SR(0, TOP_BAR, PANEL_X, HEIGHT - TOP_BAR).clip(screen.get_rect())
+    screen.blit(_grade_overlay(mode, rect.size), rect.topleft)
 
 
 def glow(surf, x: float, y: float, r: float, colour, strength: float) -> None:
@@ -273,8 +357,12 @@ class Renderer:
         line = self.sim.line
         lay = self.layout
         storybook_line = line.geo.scenery.endswith("storybook")
-        self.storybook = storybook_line and MAP_MODE in ("day", "night")
-        self.night = self.storybook and MAP_MODE == "night"
+        self.storybook = storybook_line and MAP_MODE in STORYBOOK_MODES
+        # The control room shows the night map (lit windows look like lamps on a panel).
+        self.night = self.storybook and MAP_MODE in ("night", "retro")
+        self.grade = MAP_MODE if self.storybook and MAP_MODE in ("sunset", "retro") else None
+        global GRADE
+        GRADE = self.grade
         self.plain = storybook_line and not self.storybook  # other themes: the original, simple map
         if self.storybook:
             globals().update(SB_NIGHT if self.night else SB_DAY)
@@ -322,6 +410,7 @@ class Renderer:
         geo = line.geo
         self._edge_label(surf, line.west_edge, -1, geo.start_label)
         self._edge_label(surf, line.east_edge, 1, geo.end_label)
+        grade_map(surf, self.grade)
         self.background = surf
         _background_cache[key] = {name: getattr(self, name) for name in _CACHED_SCENERY}
 
@@ -855,6 +944,7 @@ class Renderer:
             screen.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGBA_MAX)
         if self.storybook:
             self._draw_animated(screen, speed)
+            map_overlay(screen, self.grade)
         highlighted = self._highlighted_targets(hover)
         self._draw_points(screen, highlighted)
         self._draw_signals(screen, highlighted)
@@ -894,14 +984,14 @@ class Renderer:
             t = self.sea_time * 1.8 + phase
             dx, dy = math.sin(t) * S(3), math.sin(t * 0.7) * S(1.2)
             for side in (-S(4), S(4)):
-                pygame.draw.arc(screen, SB_WAVE, (x + dx + side - S(4), y + dy - S(3), S(8), S(6)), 0.2, math.pi - 0.2, width)
+                pygame.draw.arc(screen, gc(SB_WAVE), (x + dx + side - S(4), y + dy - S(3), S(8), S(6)), 0.2, math.pi - 0.2, width)
         self._draw_sails(screen)
         if not self.night:
             return
         for x, y, phase, period in self.windows:
             if (now + phase) % period < period * 0.72:
-                pygame.draw.rect(screen, LIT_WINDOW, (x, y, S(3), S(3)))
-                glow(screen, x + S(1.5), y + S(1.5), S(6), (255, 200, 100), 0.55)
+                pygame.draw.rect(screen, gc(LIT_WINDOW), (x, y, S(3), S(3)))
+                glow(screen, x + S(1.5), y + S(1.5), S(6), gc((255, 200, 100)), 0.55)
         if self.lamp:
             self._draw_beams(screen, now)
 
@@ -910,21 +1000,21 @@ class Renderer:
         t = self.mill_time
         for x, y, phase in self.turbines:
             hub = (x, y - S(16))
-            pygame.draw.line(screen, SB_TURBINE, (x, y), hub, max(1, S(2)))
+            pygame.draw.line(screen, gc(SB_TURBINE), (x, y), hub, max(1, S(2)))
             for k in range(3):
                 a = t * 2.2 + phase + k * 2 * math.pi / 3
-                pygame.draw.line(screen, SB_TURBINE, hub, (hub[0] + math.cos(a) * S(9), hub[1] + math.sin(a) * S(9)), max(1, S(1.5)))
-            ui.circle(screen, (230, 50, 50) if self.night else SB_HOUSE_OUTLINE, hub, S(1.4))
+                pygame.draw.line(screen, gc(SB_TURBINE), hub, (hub[0] + math.cos(a) * S(9), hub[1] + math.sin(a) * S(9)), max(1, S(1.5)))
+            ui.circle(screen, gc((230, 50, 50) if self.night else SB_HOUSE_OUTLINE), hub, S(1.4))
         for x, y, r, phase in self.windmills:
             for k in range(4):
                 a = t * 1.3 + phase + k * math.pi / 2
                 tip = (x + math.cos(a) * r, y + math.sin(a) * r)
-                pygame.draw.line(screen, SB_TRUNK, (x, y), tip, max(1, S(1.3)))
+                pygame.draw.line(screen, gc(SB_TRUNK), (x, y), tip, max(1, S(1.3)))
                 b = a + 0.45
                 sail = [(x + math.cos(a) * r * 0.25, y + math.sin(a) * r * 0.25), tip, (x + math.cos(b) * r * 0.75, y + math.sin(b) * r * 0.75)]
-                pygame.draw.polygon(screen, SB_SAIL, sail)
-                pygame.draw.polygon(screen, SB_HOUSE_OUTLINE, sail, 1)
-            ui.circle(screen, SB_HOUSE_OUTLINE, (x, y), S(1.6))
+                pygame.draw.polygon(screen, gc(SB_SAIL), sail)
+                pygame.draw.polygon(screen, gc(SB_HOUSE_OUTLINE), sail, 1)
+            ui.circle(screen, gc(SB_HOUSE_OUTLINE), (x, y), S(1.6))
 
     def _draw_beams(self, screen, now: float) -> None:
         """One beam of light sweeping to and fro over the sea, never over the land."""
@@ -936,15 +1026,15 @@ class Renderer:
         centre = (reach + 1, reach + 1)
         # Swing through the half circle that faces the sea, slowing down at each end.
         a = self.sea_angle + math.sin(now * 0.7) * self.beam_sweep
-        for spread, colour in ((0.2, (40, 36, 18)), (0.11, (110, 96, 50))):
+        for spread, colour in ((0.2, gc((40, 36, 18))), (0.11, gc((110, 96, 50)))):
             pygame.draw.polygon(layer, colour, [
                 centre,
                 (centre[0] + math.cos(a - spread) * reach, centre[1] + math.sin(a - spread) * reach * 0.6),
                 (centre[0] + math.cos(a + spread) * reach, centre[1] + math.sin(a + spread) * reach * 0.6)])
         layer = pygame.transform.smoothscale(pygame.transform.smoothscale(layer, (size // 4, size // 4)), (size, size))
         screen.blit(layer, (lx - centre[0], ly - centre[1]), special_flags=pygame.BLEND_RGB_ADD)
-        glow(screen, lx, ly, S(26), (255, 220, 120), 1.0)
-        ui.circle(screen, LIT_WINDOW, (lx, ly), S(2.6))
+        glow(screen, lx, ly, S(26), gc((255, 220, 120)), 1.0)
+        ui.circle(screen, gc(LIT_WINDOW), (lx, ly), S(2.6))
 
     def _highlighted_targets(self, hover) -> dict[str, tuple[int, int, int]]:
         targets = {}
