@@ -25,7 +25,7 @@ from railgame.render import (
 from railgame.settings import Settings
 from railgame.themes import THEME_NAMES, THEMES
 from railgame.track import Point, Signal
-from railgame.ui import IN_BROWSER, S, SR, best_scale, make_dpi_aware, set_scale
+from railgame.ui import IN_BROWSER, S, SR, best_scale, make_dpi_aware, set_scale, smooth_browser_canvas
 from railgame.ui import scale as ui_scale
 
 SPEED_KEYS = {pygame.K_1: 1, pygame.K_2: 5, pygame.K_3: 10, pygame.K_4: 20}
@@ -446,5 +446,6 @@ async def main() -> None:
     pygame.display.set_caption("CP Controller")
     set_window_icon()
     screen = pygame.display.set_mode((S(WIDTH), S(HEIGHT)))
+    smooth_browser_canvas()
     await Game(screen).run()
     pygame.quit()

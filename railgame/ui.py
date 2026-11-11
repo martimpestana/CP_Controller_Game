@@ -8,6 +8,7 @@ stretched by the operating system.
 import math
 import os
 import sys
+from pathlib import Path
 
 import pygame
 
@@ -41,13 +42,35 @@ def SR(x: float, y: float, w: float, h: float) -> pygame.Rect:
     return pygame.Rect(S(x), S(y), S(w), S(h))
 
 
+FONT_DIR = Path(__file__).parent / "assets" / "fonts"
+
+
 def font(size: int, bold: bool = False) -> pygame.font.Font:
     if IN_BROWSER:
-        # The browser has no system fonts, so use pygame's built-in one.
-        f = pygame.font.Font(None, round(S(size) * 1.3))
-        f.set_bold(bold)
-        return f
+        # The browser has no system fonts. pygame's built-in one is a heavy bold face that
+        # looks blurry, so the game carries its own copy of Liberation Sans (same widths as Arial).
+        name = "LiberationSans-Bold.ttf" if bold else "LiberationSans-Regular.ttf"
+        try:
+            return pygame.font.Font(str(FONT_DIR / name), S(size))
+        except (OSError, pygame.error):
+            return pygame.font.Font(None, round(S(size) * 1.3))
     return pygame.font.SysFont("segoeui,dejavusans,arial,helvetica", S(size), bold=bold)
+
+
+def smooth_browser_canvas() -> None:
+    """The pygbag page stretches the canvas with "pixelated" scaling, which makes text
+    jagged. Ask the browser for smooth scaling instead."""
+    if not IN_BROWSER:
+        return
+    try:
+        import platform
+
+        document = platform.window.document
+        style = document.createElement("style")
+        style.textContent = "canvas { image-rendering: auto !important; }"
+        document.head.appendChild(style)
+    except Exception:  # noqa: BLE001 - only a visual nicety; never stop the game for it
+        pass
 
 
 def make_dpi_aware() -> None:
