@@ -73,6 +73,49 @@ def smooth_browser_canvas() -> None:
         pass
 
 
+FULLSCREEN_JS = """
+(function () {
+  if (document.getElementById("fullscreen-button")) return;
+  const button = document.createElement("button");
+  button.id = "fullscreen-button";
+  button.title = "Full screen (F)";
+  button.textContent = "\u26F6 Full screen";
+  button.style.cssText = "position:fixed;right:12px;bottom:12px;z-index:1000;padding:8px 14px;"
+    + "font:600 14px Arial,sans-serif;color:#fff;background:rgba(30,41,59,0.85);"
+    + "border:1px solid #475569;border-radius:8px;cursor:pointer;";
+  function toggle() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen().catch(function () {});
+    }
+  }
+  button.addEventListener("click", function (e) { e.stopPropagation(); toggle(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "f" || e.key === "F") { toggle(); }
+  }, true);
+  document.addEventListener("fullscreenchange", function () {
+    button.style.display = document.fullscreenElement ? "none" : "block";
+  });
+  document.body.appendChild(button);
+})();
+"""
+
+
+def add_browser_fullscreen_button() -> None:
+    """Put a "Full screen" button on the web page (and the F key). The browser only allows
+    full screen straight from a click or key press, so this is plain JavaScript on the page
+    rather than a button drawn by pygame."""
+    if not IN_BROWSER:
+        return
+    try:
+        import platform
+
+        platform.window.eval(FULLSCREEN_JS)
+    except Exception:  # noqa: BLE001 - only a convenience; never stop the game for it
+        pass
+
+
 def make_dpi_aware() -> None:
     """Ask Windows for real pixels, so the window is not blurred by display zoom."""
     if sys.platform != "win32":

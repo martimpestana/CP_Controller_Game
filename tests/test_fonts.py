@@ -32,3 +32,7 @@ def test_browser_font_falls_back_when_the_file_is_missing(monkeypatch, tmp_path)
 
 def test_smoothing_the_canvas_does_nothing_on_the_desktop():
     ui.smooth_browser_canvas()  # must not fail outside the browser
+
+
+def test_fullscreen_button_does_nothing_on_the_desktop():
+    ui.add_browser_fullscreen_button()  # must not fail outside the browser
