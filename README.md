@@ -5,6 +5,16 @@ A railway signalling game on Portuguese lines. You are the controller of a singl
 crossing stations. Drivers send you requests, you set the signals and the points, and you try to keep
 every train on time without letting two of them onto the same track.
 
+**Play it in the browser: <https://martimpestana.github.io/CP_Controller_Game/>**
+
+## Team
+
+| Name | Student number |
+| --- | --- |
+| Martim Pestana | 75038 |
+| José Campos | 75552 |
+| Nehir Sarikaya | 78055 |
+
 ## How to run
 
 You need [uv](https://docs.astral.sh/uv/). It installs Python 3.12 and pygame for you.
@@ -23,10 +33,35 @@ shortcut with the game's icon on the Desktop. The shortcut gets the latest versi
 
 ## Play in the browser
 
-Every push to `main` builds a browser version with [pygbag](https://pypi.org/project/pygbag/)
+The game runs at <https://martimpestana.github.io/CP_Controller_Game/>. The **⛶ Full screen**
+button at the bottom right of the page (or the F key) fills the screen.
+
+Every push to `main` builds this browser version with [pygbag](https://pypi.org/project/pygbag/)
 (the same Python code, compiled to WebAssembly) and publishes it with GitHub Pages
-(see `.github/workflows/web.yml`). The address appears under **Settings → Pages**.
-Each build is also kept as a download in the **Actions** tab (`cp-controller-web`).
+(see `.github/workflows/web.yml`). The workflow also adds `webpage/page_extras.js` to the page
+(the full screen button and smooth scaling). Each build is also kept as a download in the
+**Actions** tab (`cp-controller-web`).
+
+## Tests and checks
+
+`uv run pytest` runs the tests. They cover the rules of the game (signals, points, interlocking,
+collisions, delay), the actions the game refuses (a locked set of points, an exit signal whose
+points are wrong), the menus, the drawing of every line and the browser-only parts. Every push and
+pull request runs them on GitHub (`.github/workflows/tests.yml`), together with
+[pip-audit](https://pypi.org/project/pip-audit/), which checks the dependencies for known
+vulnerabilities.
+
+## Security
+
+- There are no accounts, passwords, keys or servers: the game runs entirely on the player's
+  computer or in their browser, so there is no access control to enforce.
+- The only input is mouse clicks and keys. Every click is checked against the rules in
+  `simulation.py`, and a refused action (for example points locked under a train) is explained
+  on screen instead of being carried out.
+- The only file the game reads is its own settings file (chosen skins and theme). A missing or
+  damaged file, or one with unknown or wrongly typed values, falls back to the defaults.
+- Dependencies are few and pinned: pygame (and pytest for the tests), with exact versions in
+  `pyproject.toml` and `uv.lock`. The browser build uses pygbag 0.9.3.
 
 ## How to play
 
@@ -40,7 +75,8 @@ Each build is also kept as a download in the **Actions** tab (`cp-controller-web
   until it is done, and the signal or point it is about pulses on the map.
 - **Speed**: Pause, 1x, 5x, 10x or 20x with the buttons at the top, or 1 / 2 / 3 / 4.
   Space pauses, and pressing it again carries on at the same speed.
-- **Restart**: the Restart button at the top (or R) starts the level again. Esc goes back to the list of levels.
+- **Restart**: the Restart button at the top (or R) starts the level again. Esc goes back to the list of levels,
+  and the Menu button to the main menu.
 - **Winning**: get every train through with an average delay under the level's limit.
   A collision ends the level straight away.
 
@@ -114,6 +150,10 @@ the start.
 | `railgame/layout.py` | Converts metres on the line into pixels on the screen |
 | `railgame/render.py` | Draws a level |
 | `railgame/game.py` | The window: menu, input, result screen |
+| `railgame/scenery_lines.py` | The storybook scenery of each line (towns, hills, vineyards, the sea) |
+| `railgame/skins.py`, `railgame/themes.py` | Train skins and map colours for the Customise menu |
+| `railgame/assets/` | Game icon and the fonts used in the browser (Liberation Sans, SIL OFL) |
+| `webpage/` | Extras added to the browser page (full screen button) |
 | `tests/` | pytest tests |
 
 ### Adding a level

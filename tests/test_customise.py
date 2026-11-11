@@ -4,6 +4,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
+import pytest
 
 from railgame import render, skins
 from railgame.settings import Settings
@@ -45,6 +46,23 @@ def test_a_broken_settings_file_falls_back_to_the_defaults(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{not json")
     assert Settings.load(path).theme == "night"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        '{"skins": ["dragon"], "theme": 5}',  # wrong types
+        '{"skins": {"R": "no-such-skin", "XX": "real"}, "theme": "purple"}',  # unknown values
+        '["a list, not an object"]',
+        "null",
+    ],
+)
+def test_odd_settings_are_ignored(tmp_path, content):
+    path = tmp_path / "settings.json"
+    path.write_text(content)
+    settings = Settings.load(path)
+    assert settings.theme == "night"
+    assert settings.skins == Settings().skins
 
 
 def test_customise_screen_changes_skin_and_theme(tmp_path, monkeypatch):

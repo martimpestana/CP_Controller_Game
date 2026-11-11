@@ -46,7 +46,8 @@ class Settings:
         except (OSError, ValueError):
             return settings
         if isinstance(data, dict):
-            for kind, skin in (data.get("skins") or {}).items():
+            skins = data.get("skins")
+            for kind, skin in (skins.items() if isinstance(skins, dict) else ()):
                 if kind in SKINS and any(sid == skin for sid, _ in SKINS[kind]):
                     settings.skins[kind] = skin
             if data.get("theme") in THEMES:
