@@ -79,6 +79,17 @@ class Game:
         self.toast_until = 0
         self.scene = "playing"
 
+    def open_level(self, number: int, line_key: str | None = None) -> None:
+        """Start a level from the menus. A map that has not been drawn yet can take a moment
+        (the Douro especially, in the browser), so a "Loading" screen is shown first."""
+        line_key = line_key or self.line_key
+        if render.map_is_ready(LINE_NAMES[line_key]):
+            self.start_level(number, line_key)
+        else:
+            self.pending_level = (number, line_key)
+            self.loading_shown = False
+            self.scene = "loading"
+
     def show_toast(self, text: str) -> None:
         self.toast = text
         self.toast_until = pygame.time.get_ticks() + 3000
@@ -94,6 +105,8 @@ class Game:
         real_seconds = min(self.clock.tick(60) / 1000, 0.25)
         for event in pygame.event.get():
             self.handle(event)
+        if self.scene == "loading" and self.loading_shown:
+            self.start_level(*self.pending_level)  # the "Loading" screen is already on show
         if self.scene == "playing":
             self.sim.advance(real_seconds * self.speed)
             if self.sim.over:
@@ -110,6 +123,8 @@ class Game:
             self.key(event.key)
 
     def key(self, key) -> None:
+        if self.scene == "loading":
+            return
         if self.scene == "customise":
             if key in (pygame.K_ESCAPE, pygame.K_RETURN):
                 self.scene = "menu"
@@ -125,7 +140,7 @@ class Game:
             if key == pygame.K_ESCAPE:
                 self.scene = "menu"
             elif pygame.K_1 <= key <= pygame.K_9 and key - pygame.K_0 <= len(self.levels):
-                self.start_level(key - pygame.K_0)
+                self.open_level(key - pygame.K_0)
             return
         if key == pygame.K_ESCAPE:
             self.scene = "levels"
@@ -182,11 +197,11 @@ class Game:
             self.choose_line(action.split(":")[1])
         elif action.startswith("level:"):
             _, line_key, number = action.split(":")
-            self.start_level(int(number), line_key)
+            self.open_level(int(number), line_key)
         elif action == "retry":
             self.start_level(self.level_number)
         elif action == "next":
-            self.start_level(self.level_number + 1)
+            self.open_level(self.level_number + 1)
         elif action == "menu":
             self.scene = "menu"
         elif action == "levels":
@@ -222,6 +237,9 @@ class Game:
             return
         if self.scene == "customise":
             self.draw_customise()
+            return
+        if self.scene == "loading":
+            self.draw_loading()
             return
         hover = pygame.mouse.get_pos()
         toast = self.toast if pygame.time.get_ticks() < self.toast_until else None
@@ -391,6 +409,17 @@ class Game:
             pygame.draw.rect(s, BUTTON_ON if chosen else (MUTED if hovered else colours["BG"]), box, S(3), border_radius=S(10))
             self.buttons.append((rect, f"theme:{tid}"))
         self.button(SR(80, HEIGHT - 64, 140, 44), "Back", "menu", primary=True)
+
+    def draw_loading(self) -> None:
+        s = self.screen
+        s.fill(render.BG)
+        number, line_key = self.pending_level
+        title = self.f_title.render("Loading…", True, WHITE)
+        s.blit(title, title.get_rect(center=(S(WIDTH // 2), S(HEIGHT // 2 - 30))))
+        what = f"Drawing the map of the {LINE_NAMES[line_key]} for level {number}"
+        text = self.f_text.render(what, True, MUTED)
+        s.blit(text, text.get_rect(center=(S(WIDTH // 2), S(HEIGHT // 2 + 20))))
+        self.loading_shown = True
 
     def draw_result(self) -> None:
         s = self.screen

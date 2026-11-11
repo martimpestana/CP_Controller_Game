@@ -11,7 +11,7 @@ import random
 import pygame
 
 from railgame import skins, ui
-from railgame.layout import Layout
+from railgame.layout import Layout, NearestSample
 from railgame.simulation import Request, Simulation
 from railgame.track import EAST, Point, Signal
 from railgame.train import Train
@@ -152,6 +152,27 @@ def apply_theme(colours: dict[str, tuple[int, int, int]]) -> None:
 
 _glow_cache: dict = {}
 
+# Maps already drawn, by line, colours and scale (see Renderer._prepare_background).
+_background_cache: dict = {}
+_CACHED_SCENERY = ("background", "wave_marks", "windows", "lamp", "sea_angle", "beam_sweep", "windmills", "turbines")
+
+
+def _theme_colour_names() -> tuple[str, ...]:
+    from railgame.themes import THEMES
+
+    return tuple(sorted({name for colours in THEMES.values() for name in colours}))
+
+
+def _background_key(line_name: str) -> tuple:
+    return (line_name, ui.scale(), MAP_MODE, tuple(globals().get(name) for name in _theme_colour_names()))
+
+
+def map_is_ready(line_name: str) -> bool:
+    """True when the map of this line is already drawn for the current colours and scale."""
+    return _background_key(line_name) in _background_cache
+
+
+
 
 def glow(surf, x: float, y: float, r: float, colour, strength: float) -> None:
     """Light added on top of what is already drawn, brightest in the middle."""
@@ -249,8 +270,6 @@ class Renderer:
     def _prepare_background(self) -> None:
         line = self.sim.line
         lay = self.layout
-        surf = pygame.Surface((S(WIDTH), S(HEIGHT)))
-        surf.fill(BG)
         storybook_line = line.geo.scenery.endswith("storybook")
         self.storybook = storybook_line and MAP_MODE in ("day", "night")
         self.night = self.storybook and MAP_MODE == "night"
@@ -269,6 +288,17 @@ class Renderer:
         self._last_tick: int | None = None
         self.land = SB_LAND if self.storybook else LAND
         self.sea = SB_SEA if self.storybook else SEA
+
+        # The map only depends on the line, the colours and the screen scale, so it is drawn
+        # once and reused when the same line is played again (the Douro takes a while to draw).
+        key = _background_key(line.name)
+        cached = _background_cache.get(key)
+        if cached is not None:
+            self.__dict__.update(cached)
+            return
+
+        surf = pygame.Surface((S(WIDTH), S(HEIGHT)))
+        surf.fill(BG)
         pygame.draw.rect(surf, self.land, SR(0, TOP_BAR, PANEL_X, HEIGHT - TOP_BAR))
 
         self._draw_water(surf)
@@ -291,6 +321,7 @@ class Renderer:
         self._edge_label(surf, line.west_edge, -1, geo.start_label)
         self._edge_label(surf, line.east_edge, 1, geo.end_label)
         self.background = surf
+        _background_cache[key] = {name: getattr(self, name) for name in _CACHED_SCENERY}
 
     def _edge_label(self, surf, pos: float, outwards: int, name: str) -> None:
         """Label where the line leaves the map, with an arrow pointing the way it goes."""
@@ -386,8 +417,10 @@ class Renderer:
             samples.append((*lay.point(pos), *lay.normal(pos)))
             pos += 150
 
+        nearest = NearestSample(samples, S(60)).nearest
+
         def from_track(x: float, y: float) -> tuple[float, bool]:
-            sx, sy, nx, ny = min(samples, key=lambda s: (s[0] - x) ** 2 + (s[1] - y) ** 2)
+            sx, sy, nx, ny = nearest(x, y)
             inland = ((x - sx) * nx + (y - sy) * ny) * land_side > 0
             return math.dist((x, y), (sx, sy)), inland
 
