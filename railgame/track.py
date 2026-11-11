@@ -4,7 +4,7 @@ All positions are in metres along the line, measured from Faro.
 Positive direction is EAST (towards Tavira), negative is WEST (towards Faro).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 EAST = 1
 WEST = -1
@@ -82,6 +82,12 @@ class Geography:
     barrier_islands: bool = False  # the sandy islands of the Ria Formosa
     # Where the map is drawn, in 1280x720 design pixels (x, y, width, height). None: the default box.
     map_box: tuple[int, int, int, int] | None = None
+    # How the land and water are drawn with the Day and Night themes: "plain" (just land and
+    # water), or "algarve-storybook", "oeste-storybook", "douro-storybook" (an illustrated map
+    # of the region, see render.py and scenery_lines.py). Other themes always use "plain".
+    scenery: str = "plain"
+    towns: dict[str, int] = field(default_factory=dict)  # station name -> town radius in pixels
+    hills_label: str = ""
 
 
 @dataclass
@@ -178,6 +184,9 @@ def algarve_faro_tavira() -> Line:
         start_label="Loulé",
         end_label="V. R. S. António",
         barrier_islands=True,
+        scenery="algarve-storybook",
+        towns={"Faro": 62, "Olhão": 52, "Fuseta": 34, "Tavira": 56},
+        hills_label="Serra de Monte Figo",
     )
     return build_line("Linha do Algarve", stations, west_edge=-2500, east_edge=32500, geo=geo)
 
@@ -214,6 +223,9 @@ def oeste_torres_caldas() -> Line:
         water_side=1,  # the Atlantic is to the west, on the left of a northbound train
         water_edge="left",
         map_box=(300, 80, 440, 620),  # a north-south line gets a tall map
+        scenery="oeste-storybook",
+        towns={"Torres Vedras": 46, "Ramalhal": 18, "Bombarral": 36, "Caldas da Rainha": 52},
+        hills_label="Serra de Montejunto",
     )
     return build_line("Linha do Oeste", stations, west_edge=-2500, east_edge=41000, geo=geo)
 
@@ -250,6 +262,9 @@ def douro_regua_ferradosa() -> Line:
         water="river",
         water_side=-1,
         water_label="Rio Douro",
+        scenery="douro-storybook",
+        towns={"Peso da Régua": 48, "Pinhão": 30, "Tua": 22, "Ferradosa": 16},
+        hills_label="Alto Douro Vinhateiro",
     )
     return build_line("Linha do Douro", stations, west_edge=-2500, east_edge=49500, geo=geo)
 

@@ -44,3 +44,13 @@ def test_space_carries_on_at_the_speed_used_before_the_pause():
     assert game.speed == 0
     game.key(pygame.K_SPACE)
     assert game.speed == 20
+
+
+def test_menu_button_goes_back_to_the_main_menu():
+    pygame.init()
+    game = Game(pygame.display.set_mode((1280, 720)))
+    game.start_level(1)
+    game.draw()
+    assert game.renderer.menu_button is not None
+    game.click(game.renderer.menu_button.center)
+    assert game.scene == "menu"
