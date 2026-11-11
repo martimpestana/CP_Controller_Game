@@ -334,13 +334,13 @@ class Game:
         y = 120
         # One tab per type of train; the skins of the chosen type are shown below.
         for i, kind in enumerate(skins.TRAIN_TYPES):
-            rect = SR(80 + i * 285, y, 270, 44)
+            rect = SR(80 + i * 190, y, 180, 44)
             chosen = kind == self.customise_kind
             hovered = rect.collidepoint(mouse)
             pygame.draw.rect(s, BUTTON_ON if chosen else render.LAND, rect, border_radius=S(10))
             if hovered and not chosen:
                 pygame.draw.rect(s, MUTED, rect, S(3), border_radius=S(10))
-            label = self.f_head.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE if chosen else TEXT)
+            label = self.f_text.render(f"{kind} · {skins.TYPE_NAMES[kind]}", True, WHITE if chosen else TEXT)
             s.blit(label, label.get_rect(center=rect.center))
             self.buttons.append((rect, f"tab:{kind}"))
         y += 64
