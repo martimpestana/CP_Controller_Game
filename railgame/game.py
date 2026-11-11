@@ -150,6 +150,9 @@ class Game:
         if self.renderer.restart_button_at(pos):
             self.start_level(self.level_number)
             return
+        if self.renderer.menu_button_at(pos):
+            self.scene = "menu"
+            return
         request = self.renderer.request_button_at(pos)
         if request is not None:
             # "Do it" on a driver's request flips the signal or points the driver asked about.
