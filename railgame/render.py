@@ -944,19 +944,23 @@ class Renderer:
             if s.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[s.id])
 
-    def _walk_back(self, train: Train, px_dist: float) -> tuple[float, float]:
-        """The point on the drawn track px_dist screen pixels behind the front of the train.
-        Each step uses the track that part of the train is on, so the carriages follow the
-        front through the points instead of jumping across."""
+    def _walk_back(self, train: Train, px_dists: list[float]) -> list[tuple[float, float]]:
+        """The points on the drawn track px_dists screen pixels behind the front of the train
+        (in increasing order), found in a single walk along the track. Each step uses the track
+        that part of the train is on, so the carriages follow the front through the points
+        instead of jumping across."""
         prev = self.layout.point(train.pos, train.track_at(train.pos))
         done, metres = 0.0, 0.0
-        while done < px_dist and metres < 6000:
-            metres += 5
-            pos = train.pos - train.direction * metres
-            cur = self.layout.point(pos, train.track_at(pos))
-            done += math.dist(prev, cur)
-            prev = cur
-        return prev
+        out = []
+        for want in px_dists:
+            while done < want and metres < 6000:
+                metres += 5
+                pos = train.pos - train.direction * metres
+                cur = self.layout.point(pos, train.track_at(pos))
+                done += math.dist(prev, cur)
+                prev = cur
+            out.append(prev)
+        return out
 
     def _draw_trains(self, screen) -> None:
         line = self.sim.line
@@ -973,10 +977,12 @@ class Renderer:
             kind = train_kind(train)
             cars = skins.CARS.get(kind, 2)
             skin = self.skins.get(kind, "real")
-            ends = []
+            dists = []
             for i in range(cars):
                 offset = S(i * (CAR_PX + CAR_GAP_PX))
-                ends.append((self._walk_back(train, offset), self._walk_back(train, offset + S(CAR_PX))))
+                dists += [offset, offset + S(CAR_PX)]
+            points = self._walk_back(train, dists)
+            ends = list(zip(points[::2], points[1::2]))
             for i in reversed(range(cars)):
                 a, b = ends[i]
                 if i < cars - 1:
