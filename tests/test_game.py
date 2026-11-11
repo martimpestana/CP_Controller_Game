@@ -119,3 +119,19 @@ def test_a_refused_click_explains_why():
     point = next(p for p in game.sim.line.points if p.id == "FAR-PW")
     game.click(game.renderer.point_position(point))  # points behind a green signal are locked
     assert game.toast and "locked" in game.toast
+
+
+def test_menu_buttons_do_not_cover_the_lines():
+    pygame.init()
+    game = Game(pygame.display.set_mode((1280, 720)))
+    game.draw()
+    lines = [rect for rect, action in game.buttons if action.startswith("line:")]
+    others = [rect for rect, action in game.buttons if not action.startswith("line:")]
+    assert len(lines) == len(LEVELS) and others
+    screen = game.screen.get_rect()
+    for rect in lines + others:
+        assert screen.contains(rect)
+    for rect in others:
+        assert rect.collidelist(lines) < 0
+    for i, rect in enumerate(lines):
+        assert rect.collidelist(lines[i + 1 :]) < 0
