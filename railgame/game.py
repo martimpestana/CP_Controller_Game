@@ -29,11 +29,9 @@ from railgame.ui import (
     IN_BROWSER,
     S,
     SR,
-    add_browser_fullscreen_button,
     best_scale,
     make_dpi_aware,
     set_scale,
-    smooth_browser_canvas,
 )
 from railgame.ui import scale as ui_scale
 
@@ -468,7 +466,5 @@ async def main() -> None:
     pygame.display.set_caption("CP Controller")
     set_window_icon()
     screen = pygame.display.set_mode((S(WIDTH), S(HEIGHT)))
-    smooth_browser_canvas()
-    add_browser_fullscreen_button()
     await Game(screen).run()
     pygame.quit()

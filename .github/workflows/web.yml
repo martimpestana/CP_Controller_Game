@@ -34,6 +34,7 @@ jobs:
           cp -r main.py railgame web/cp_controller/
           cd web
           pygbag --ume_block 0 --build cp_controller
+          python ../webpage/add_extras.py cp_controller/build/web
           ls -la cp_controller/build/web
       - name: Keep the build as a download
         uses: actions/upload-artifact@v4
