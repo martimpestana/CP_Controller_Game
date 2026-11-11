@@ -34,19 +34,28 @@ def frame(renderer: Renderer, speed: int, ticks: int, monkeypatch) -> pygame.Sur
     return screen
 
 
-@pytest.mark.parametrize("theme", ["day", "night"])
-def test_day_and_night_get_the_storybook_map(theme):
+@pytest.mark.parametrize("theme", ["day", "night", "sunset", "retro"])
+def test_every_theme_gets_the_storybook_map(theme):
     r = algarve_renderer(theme)
-    assert r.storybook and r.night == (theme == "night")
+    dark = theme in ("night", "retro")  # the control room shows the night map, in green
+    assert r.storybook and not r.plain and r.night == dark
     assert r.wave_marks and r.lamp
-    assert bool(r.windows) == (theme == "night")  # only night has windows that light up
+    assert bool(r.windows) == dark  # only at night do windows light up
 
 
-@pytest.mark.parametrize("theme", ["sunset", "retro"])
-def test_other_themes_keep_the_original_map(theme):
-    r = algarve_renderer(theme)
-    assert not r.storybook and r.plain
-    assert not r.wave_marks and r.lamp is None
+def test_sunset_and_control_room_colour_the_map_and_what_moves_on_it():
+    from railgame import render
+
+    day, sunset, retro = (algarve_renderer(t) for t in ("day", "sunset", "retro"))
+    assert day.grade is None and sunset.grade == "sunset" and retro.grade == "retro"
+    sea = render.SB_DAY["SB_SEA"]
+    r, g, b = render.grade_colour(sea, "sunset")
+    assert r == sea[0] and g < sea[1] and b < sea[2]  # warmer: less green and blue
+    r, g, b = render.grade_colour((200, 40, 40), "retro")
+    assert g > r and g > b  # everything turns phosphor green
+    # The map itself is graded the same way: no strong red or blue left on the control room map.
+    px = retro.background.get_at((200, 300))
+    assert px.g >= px.r and px.g >= px.b
 
 
 def test_waves_move_only_while_the_trains_run(monkeypatch):
@@ -117,10 +126,9 @@ def line_renderer(line: str, theme: str) -> Renderer:
 @pytest.mark.parametrize("theme", ["day", "night", "sunset", "retro"])
 def test_oeste_and_douro_get_their_own_map_by_day_and_night(line, theme):
     r = line_renderer(line, theme)
-    storybook = theme in ("day", "night")
-    assert r.storybook == storybook and r.plain == (not storybook)
-    assert bool(r.wave_marks) == storybook  # sea waves on the Oeste, ripples on the Douro
-    if line == "oeste" and storybook:
+    assert r.storybook and not r.plain
+    assert r.wave_marks  # sea waves on the Oeste, ripples on the Douro
+    if line == "oeste":
         assert len(r.windmills) >= 3 and r.turbines and r.lamp
 
 

@@ -535,24 +535,24 @@ def animate(self, screen, speed) -> None:
     for x, y, phase in self.lx_waves:
         dx = math.sin(t * 1.6 + phase) * S(3)
         for side in (-S(4), S(4)):
-            pygame.draw.arc(screen, c["river_dark"], (x + dx + side - S(4), y - S(3), S(8), S(6)), 0.2, math.pi - 0.2, width)
+            pygame.draw.arc(screen, R.gc(c["river_dark"]), (x + dx + side - S(4), y - S(3), S(8), S(6)), 0.2, math.pi - 0.2, width)
     # The ferry goes across and back.
     (ax, ay), (bx, by) = self.lx_ferry
     f = 0.5 - 0.5 * math.cos(t * 0.12)
     fx, fy = ax + (bx - ax) * f, ay + (by - ay) * f
-    pygame.draw.ellipse(screen, c["outline"], (fx - S(12), fy - S(5), S(24), S(10)))
-    pygame.draw.ellipse(screen, (240, 130, 40), (fx - S(11), fy - S(4), S(22), S(8)))
-    pygame.draw.rect(screen, (250, 250, 250), (fx - S(6), fy - S(7), S(12), S(5)))
-    pygame.draw.rect(screen, c["outline"], (fx - S(6), fy - S(7), S(12), S(5)), 1)
-    pygame.draw.arc(screen, c["river_light"], (fx - S(18), fy + S(2), S(36), S(6)), math.pi + 0.3, 2 * math.pi - 0.3, width)
+    pygame.draw.ellipse(screen, R.gc(c["outline"]), (fx - S(12), fy - S(5), S(24), S(10)))
+    pygame.draw.ellipse(screen, R.gc((240, 130, 40)), (fx - S(11), fy - S(4), S(22), S(8)))
+    pygame.draw.rect(screen, R.gc((250, 250, 250)), (fx - S(6), fy - S(7), S(12), S(5)))
+    pygame.draw.rect(screen, R.gc(c["outline"]), (fx - S(6), fy - S(7), S(12), S(5)), 1)
+    pygame.draw.arc(screen, R.gc(c["river_light"]), (fx - S(18), fy + S(2), S(36), S(6)), math.pi + 0.3, 2 * math.pi - 0.3, width)
     # Cable car gondolas sliding along the river.
     (a0, a1), (b0, b1) = self.lx_cable
     for i in range(3):
         g = (t * 0.05 + i / 3) % 1.0
         gx, gy = a0 + (b0 - a0) * g, a1 + (b1 - a1) * g
-        pygame.draw.line(screen, c["outline"], (gx, gy), (gx, gy + S(4)), 1)
-        pygame.draw.rect(screen, c["outline"], (gx - S(3.5), gy + S(4), S(7), S(6)), border_radius=S(2))
-        pygame.draw.rect(screen, (230, 80, 70) if i % 2 else (80, 140, 220), (gx - S(2.5), gy + S(5), S(5), S(4)), border_radius=S(1))
+        pygame.draw.line(screen, R.gc(c["outline"]), (gx, gy), (gx, gy + S(4)), 1)
+        pygame.draw.rect(screen, R.gc(c["outline"]), (gx - S(3.5), gy + S(4), S(7), S(6)), border_radius=S(2))
+        pygame.draw.rect(screen, R.gc((230, 80, 70) if i % 2 else (80, 140, 220)), (gx - S(2.5), gy + S(5), S(5), S(4)), border_radius=S(1))
     # The yellow tram climbing through Alfama.
     route = self.lx_tram
     g = 0.5 - 0.5 * math.cos(t * 0.15)
@@ -564,22 +564,22 @@ def animate(self, screen, speed) -> None:
     ang = math.atan2(y1 - y0, x1 - x0)
     ca, sa = math.cos(ang), math.sin(ang)
     body = [(tx + ca * u - sa * v, ty + sa * u + ca * v) for u, v in ((-S(7), -S(3.5)), (S(7), -S(3.5)), (S(7), S(3.5)), (-S(7), S(3.5)))]
-    pygame.draw.polygon(screen, c["outline"], [(x + (x - tx) * 0.15, y + (y - ty) * 0.25) for x, y in body])
-    pygame.draw.polygon(screen, (250, 204, 40), body)
+    pygame.draw.polygon(screen, R.gc(c["outline"]), [(x + (x - tx) * 0.15, y + (y - ty) * 0.25) for x, y in body])
+    pygame.draw.polygon(screen, R.gc((250, 204, 40)), body)
     for u in (-S(4), 0, S(4)):
         wx, wy = tx + ca * u + sa * S(1), ty + sa * u - ca * S(1)
-        pygame.draw.rect(screen, (60, 80, 110), (wx - S(1), wy - S(1), S(2), S(2)))
-    pygame.draw.line(screen, c["outline"], (tx, ty - S(3)), (tx + S(2), ty - S(9)), 1)
+        pygame.draw.rect(screen, R.gc((60, 80, 110)), (wx - S(1), wy - S(1), S(2), S(2)))
+    pygame.draw.line(screen, R.gc(c["outline"]), (tx, ty - S(3)), (tx + S(2), ty - S(9)), 1)
     # Smoke from the old factory chimneys.
     for cx, cy in getattr(self, "lx_smoke", []):
         for j in range(3):
             p = (t * 0.6 + j / 3) % 1.0
-            ui.circle(screen, R.mix(c["stone"], c["city"], p), (cx + p * S(10), cy - p * S(14)), S(1.5 + 2.5 * p))
+            ui.circle(screen, R.gc(R.mix(c["stone"], c["city"], p)), (cx + p * S(10), cy - p * S(14)), S(1.5 + 2.5 * p))
     if not self.night:
         return
     for x, y, phase, period in self.windows:
         if (now + phase) % period < period * 0.72:
-            pygame.draw.rect(screen, R.LIT_WINDOW, (x, y, S(2), S(2)))
+            pygame.draw.rect(screen, R.gc(R.LIT_WINDOW), (x, y, S(2), S(2)))
     for x, y, phase in self.lx_lights:
         on = 0.6 + 0.4 * math.sin(now * 2 + phase)
-        glow(screen, x, y, S(5), (255, 220, 140), on)
+        glow(screen, x, y, S(5), R.gc((255, 220, 140)), on)

@@ -189,8 +189,10 @@ class NetRenderer(Renderer):
         surf = pygame.Surface((S(WIDTH), S(HEIGHT)))
         surf.fill(R.BG)
         storybook_line = line.geo.scenery.endswith("storybook")
-        self.storybook = storybook_line and R.MAP_MODE in ("day", "night")
-        self.night = self.storybook and R.MAP_MODE == "night"
+        self.storybook = storybook_line and R.MAP_MODE in R.STORYBOOK_MODES
+        self.night = self.storybook and R.MAP_MODE in ("night", "retro")
+        self.grade = R.MAP_MODE if self.storybook and R.MAP_MODE in ("sunset", "retro") else None
+        R.GRADE = self.grade
         if self.storybook:
             R.__dict__.update(R.SB_NIGHT if self.night else R.SB_DAY)
         self.land = R.SB_LAND if self.storybook else R.LAND
@@ -222,6 +224,7 @@ class NetRenderer(Renderer):
                 nx, ny = lay.normal(t.start)
                 ui.thick_line(surf, (200, 70, 60), (x - nx * S(5), y - ny * S(5)), (x + nx * S(5), y + ny * S(5)), S(3))
         self._edge_labels(surf)
+        R.grade_map(surf, self.grade)
         self.background = surf
 
     def _plain_river(self, surf) -> None:
@@ -286,6 +289,7 @@ class NetRenderer(Renderer):
             from railgame import scenery_lisboa
 
             scenery_lisboa.animate(self, screen, speed)
+            R.map_overlay(screen, self.grade)
         highlighted = self._highlighted_targets(hover)
         self._draw_points(screen, highlighted)
         self._draw_trains(screen)
