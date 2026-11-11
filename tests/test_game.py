@@ -93,3 +93,29 @@ def test_escape_while_playing_goes_back_to_the_levels_as_the_help_says():
     game.start_level(1, "algarve")
     game.key(pygame.K_ESCAPE)
     assert game.scene == "levels"
+
+
+def test_first_level_shows_tips_and_the_result_lists_every_train():
+    pygame.init()
+    game = Game(pygame.display.set_mode((1280, 720)))
+    game.start_level(1, "algarve")
+    game.draw()
+    assert game.renderer.first_level
+    game.start_level(2, "algarve")
+    game.draw()
+    assert not game.renderer.first_level
+    game.scene = "result"  # the result screen can be drawn at any moment, with every train
+    game.draw()
+    assert {"levels", "retry"} <= {action for _, action in game.buttons}
+
+
+def test_a_refused_click_explains_why():
+    pygame.init()
+    game = Game(pygame.display.set_mode((1280, 720)))
+    game.start_level(1, "algarve")
+    game.draw()
+    game.sim.advance(150)  # the first train is on its way to Faro
+    assert game.sim.toggle_signal("FAR-E0") is None
+    point = next(p for p in game.sim.line.points if p.id == "FAR-PW")
+    game.click(game.renderer.point_position(point))  # points behind a green signal are locked
+    assert game.toast and "locked" in game.toast

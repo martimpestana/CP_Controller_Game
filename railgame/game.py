@@ -92,7 +92,7 @@ class Game:
 
     def show_toast(self, text: str) -> None:
         self.toast = text
-        self.toast_until = pygame.time.get_ticks() + 3000
+        self.toast_until = pygame.time.get_ticks() + 4500  # long enough to read
 
     # ------------------------------------------------------------------ main loop
 
@@ -426,11 +426,12 @@ class Game:
         shade = pygame.Surface(s.get_size(), pygame.SRCALPHA)
         shade.fill((0, 0, 0, 150))
         s.blit(shade, (0, 0))
-        box = SR(0, 0, 560, 300)
+        sim = self.sim
+        rows = len(sim.trains)
+        box = SR(0, 0, 560, 300 + 22 * rows + 16)
         box.center = (S(WIDTH // 2), S(HEIGHT // 2))
         pygame.draw.rect(s, render.CARD, box, border_radius=S(14))
 
-        sim = self.sim
         if sim.crash:
             a, b = sim.crash
             title, colour = "Accident!", RED
@@ -459,14 +460,31 @@ class Game:
             t = self.f_text.render(line, True, TEXT)
             s.blit(t, t.get_rect(center=(box.centerx, box.y + S(120 + i * 24))))
 
+        # Every train's delay, so the player can see which ones made the average go up.
+        y = box.y + S(120 + len(lines) * 24 + 16)
+        limit = sim.max_average_delay
+        for train in sim.trains:
+            if train.state == "waiting" and train.delay(sim.time) == 0:
+                status, colour = "did not start", MUTED
+            else:
+                delay = train.delay(sim.time)
+                status = "on time" if delay < 30 else f"+{minutes_text(delay)}"
+                colour = GREEN if delay < 30 else (RED if delay > limit else render.YELLOW)
+            name = self.f_text.render(train.name, True, TEXT)
+            s.blit(name, (box.x + S(150), y))
+            t = self.f_text.render(status, True, colour)
+            s.blit(t, t.get_rect(topright=(box.right - S(150), y)))
+            y += S(22)
+
         y = box.bottom - S(70)
         if sim.passed and self.level_number < len(self.levels):
             self.button(pygame.Rect(box.x + S(30), y, S(150), S(44)), "Levels", "levels")
             self.button(pygame.Rect(box.x + S(200), y, S(150), S(44)), "Replay", "retry")
             self.button(pygame.Rect(box.x + S(370), y, S(160), S(44)), "Next level", "next", primary=True)
         else:
+            again = "Replay" if sim.passed else "Try again"  # the last level, passed: nothing comes next
             self.button(pygame.Rect(box.x + S(60), y, S(200), S(44)), "Levels", "levels")
-            self.button(pygame.Rect(box.x + S(300), y, S(200), S(44)), "Try again", "retry", primary=True)
+            self.button(pygame.Rect(box.x + S(300), y, S(200), S(44)), again, "retry", primary=True)
 
 
 ICON_FILE = Path(__file__).parent / "assets" / "icon.png"

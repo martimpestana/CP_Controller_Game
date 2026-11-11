@@ -78,7 +78,10 @@ vulnerabilities.
 - **Restart**: the Restart button at the top (or R) starts the level again. Esc goes back to the list of levels,
   and the Menu button to the main menu.
 - **Winning**: get every train through with an average delay under the level's limit.
-  A collision ends the level straight away.
+  A collision ends the level straight away. The result screen lists every train's delay, so you
+  can see which ones pushed the average up.
+- **Refused actions**: when the game refuses a click (for example points locked under a train),
+  a red message at the top of the map says why.
 
 Eastbound trains (blue) are planned on track 1 at crossing stations and westbound trains
 (orange) on track 2, so that they can cross. If that track is already taken, the driver asks

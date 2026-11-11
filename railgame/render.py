@@ -215,6 +215,7 @@ class Renderer:
         self.menu_button: pygame.Rect | None = None
         self.request_buttons: list[tuple[pygame.Rect, Request]] = []
         self.train_boxes: list[tuple[pygame.Rect, Train]] = []
+        self.first_level = False
         self._prepare_background()
 
     # ------------------------------------------------------------------ positions used for clicks
@@ -844,6 +845,7 @@ class Renderer:
     # ------------------------------------------------------------------ drawing a frame
 
     def draw(self, screen: pygame.Surface, info, speed: int, hover: tuple[int, int], toast: str | None) -> None:
+        self.first_level = getattr(info, "number", None) == 1
         screen.blit(self.background, (0, 0))
         if screen.get_flags() & pygame.SRCALPHA:
             # Some windows (e.g. on macOS) keep an alpha channel, and the background leaves it at 0.
@@ -863,10 +865,11 @@ class Renderer:
         self._draw_next_trains(screen)
         self._draw_legend(screen)
         self._draw_hover(screen, hover)
-        if toast:
-            text = self.f_text.render(toast, True, WHITE)
-            box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 30))).inflate(S(24), S(14))
-            pygame.draw.rect(screen, (90, 40, 40), box, border_radius=S(8))
+        if toast:  # why the last click was refused
+            text = self.f_bold.render(toast, True, WHITE)
+            box = text.get_rect(center=(S(PANEL_X // 2), S(TOP_BAR + 32))).inflate(S(28), S(18))
+            pygame.draw.rect(screen, (110, 36, 36), box, border_radius=S(8))
+            pygame.draw.rect(screen, RED, box, max(1, S(2)), border_radius=S(8))
             screen.blit(text, text.get_rect(center=box.center))
 
     def _draw_animated(self, screen, speed: int) -> None:
@@ -1164,6 +1167,14 @@ class Renderer:
         self.request_buttons = []
         if not requests:
             screen.blit(self.f_text.render("All quiet on the line.", True, MUTED), (S(PANEL_X + 18), y))
+            if self.first_level:  # a few words for someone playing for the first time
+                tips = (
+                    "When a train comes, its driver asks you for something here: a green "
+                    "signal or the points set for a track. Click the signal or points that "
+                    "pulse on the map, or press Do it on the request."
+                )
+                for i, line in enumerate(self._wrap(tips, width - S(10))):
+                    screen.blit(self.f_text.render(line, True, TEXT), (S(PANEL_X + 18), y + S(34 + 20 * i)))
         for i, request in enumerate(requests):
             lines = self._wrap(request.text, width - S(30))
             height = S(40) + S(19) * len(lines)
