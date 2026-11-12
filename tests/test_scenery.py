@@ -165,3 +165,25 @@ def test_alentejo_storks_fly(monkeypatch):
     a = frame(r, 0, 1000, monkeypatch)
     b = frame(r, 0, 3000, monkeypatch)
     assert pygame.image.tobytes(a, "RGB") != pygame.image.tobytes(b, "RGB")
+
+
+@pytest.mark.parametrize("line", ["algarve", "oeste", "douro", "alentejo"])
+def test_train_tags_never_cover_signals_or_points(line):
+    from railgame.ui import S
+
+    pygame.init()
+    game = Game(pygame.display.set_mode((1280, 720)))
+    game.start_level(8, line)  # the busiest level of the line
+    r = game.renderer
+    controls = [pygame.Rect(x - S(7), y - S(7), S(14), S(14)) for x, y in
+                [r.signal_position(s) for s in game.sim.line.signals] + [r.point_position(p) for p in game.sim.line.points]]
+    seen = 0
+    for _ in range(120):
+        game.sim.advance(30)
+        if game.sim.crash:
+            break
+        game.draw()
+        for box, train in r.train_boxes[::2]:  # each train adds its tag, then its body
+            seen += 1
+            assert not any(box.colliderect(c) for c in controls), f"{train.name}'s tag covers a signal or points"
+    assert seen > 0
