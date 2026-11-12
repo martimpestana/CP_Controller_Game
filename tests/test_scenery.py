@@ -148,3 +148,20 @@ def test_oeste_lighthouse_beam_stays_over_the_sea(monkeypatch):
     assert r.beam_sweep < math.pi / 2 - 0.25
     sea_x = math.cos(r.sea_angle)
     assert sea_x < 0  # the Atlantic is to the west, on the left of the map
+
+
+@pytest.mark.parametrize("theme", ["day", "night", "sunset", "retro"])
+def test_alentejo_gets_its_own_map_in_every_theme(theme):
+    r = line_renderer("alentejo", theme)
+    assert r.storybook and not r.plain
+    assert r.wave_marks  # ripples on the Alvito reservoir
+    dark = theme in ("night", "retro")
+    assert bool(r.windows) == dark  # lit windows only at night
+    assert bool(r.storks) == (not dark)  # storks glide over the plain by day
+
+
+def test_alentejo_storks_fly(monkeypatch):
+    r = line_renderer("alentejo", "day")
+    a = frame(r, 0, 1000, monkeypatch)
+    b = frame(r, 0, 3000, monkeypatch)
+    assert pygame.image.tobytes(a, "RGB") != pygame.image.tobytes(b, "RGB")

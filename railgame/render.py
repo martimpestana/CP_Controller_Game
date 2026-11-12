@@ -157,7 +157,7 @@ _glow_cache: dict = {}
 
 # Maps already drawn, by line, colours and scale (see Renderer._prepare_background).
 _background_cache: dict = {}
-_CACHED_SCENERY = ("background", "wave_marks", "windows", "lamp", "sea_angle", "beam_sweep", "windmills", "turbines")
+_CACHED_SCENERY = ("background", "wave_marks", "windows", "lamp", "sea_angle", "beam_sweep", "windmills", "turbines", "storks")
 
 
 def _theme_colour_names() -> tuple[str, ...]:
@@ -373,6 +373,7 @@ class Renderer:
         self.beam_sweep = math.pi / 2 - 0.25  # how far the beam swings each way from straight out to sea
         self.windmills: list[tuple[float, float, float, float]] = []  # Oeste: hub x, y, sail length, phase
         self.turbines: list[tuple[float, float, float]] = []  # Oeste: foot x, y, phase
+        self.storks: list[tuple[float, float, float, float]] = []  # Alentejo: circle x, y, radius, phase
         self.mill_time = 0.0  # the sails turn while the trains run
         self.sea_time = 0.0
         self._last_tick: int | None = None
@@ -446,6 +447,8 @@ class Renderer:
     def _draw_water(self, surf) -> None:
         """The sea or the river, following the shape of the line."""
         line, lay, geo = self.sim.line, self.layout, self.sim.line.geo
+        if geo.water == "none":  # inland: any lake belongs to the line's scenery
+            return
         side = geo.water_side
         offset = 45 if geo.water == "sea" else 30
         shore, island = [], []
@@ -573,6 +576,10 @@ class Renderer:
             y += step
         if geo.scenery == "algarve-storybook":
             self._algarve_storybook(surf, cells, rng, area, kind_at)
+        elif geo.scenery == "alentejo-storybook":
+            from railgame import scenery_alentejo
+
+            scenery_alentejo.draw(self, surf, cells, rng, area, kind_at)
         else:
             from railgame import scenery_lines
 
@@ -986,6 +993,10 @@ class Renderer:
             for side in (-S(4), S(4)):
                 pygame.draw.arc(screen, gc(SB_WAVE), (x + dx + side - S(4), y + dy - S(3), S(8), S(6)), 0.2, math.pi - 0.2, width)
         self._draw_sails(screen)
+        if self.sim.line.geo.scenery == "alentejo-storybook":
+            from railgame import scenery_alentejo
+
+            scenery_alentejo.animate(self, screen, speed)
         if not self.night:
             return
         for x, y, phase, period in self.windows:
