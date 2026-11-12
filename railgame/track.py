@@ -75,7 +75,7 @@ class Geography:
     station_shape_index: dict[str, int]  # which shape point each crossing station sits on
     start_label: str  # where the line continues off the map, at each end
     end_label: str
-    water: str = "sea"  # "sea" or "river"
+    water: str = "sea"  # "sea", "river" or "none" (inland)
     water_side: int = -1  # -1: to the right of a train going in the positive direction, +1: to the left
     water_edge: str = "bottom"  # for the sea: which edge of the map it reaches ("bottom" or "left")
     water_label: str = "Atlantic Ocean"
@@ -84,7 +84,7 @@ class Geography:
     map_box: tuple[int, int, int, int] | None = None
     # How the land and water are drawn with the Day and Night themes: "plain" (just land and
     # water), or "algarve-storybook", "oeste-storybook", "douro-storybook" (an illustrated map
-    # of the region, see render.py and scenery_lines.py). Other themes always use "plain".
+    # of the region, see render.py, scenery_lines.py and scenery_alentejo.py).
     scenery: str = "plain"
     towns: dict[str, int] = field(default_factory=dict)  # station name -> town radius in pixels
     hills_label: str = ""
@@ -269,6 +269,50 @@ def douro_regua_ferradosa() -> Line:
     return build_line("Linha do Douro", stations, west_edge=-2500, east_edge=49500, geo=geo)
 
 
+def alentejo_casa_branca_beja() -> Line:
+    """Linha do Alentejo between Casa Branca and Beja, across the plain (single track).
+
+    Distances follow the line's kilometre posts (Casa Branca km 90.4, Beja km 153.9); the
+    section between Alcáçovas and Alvito is 23 km of single track with no place to cross.
+    """
+    stations = [
+        Station("Casa Branca", "CBR", 0, True),
+        Station("Alcáçovas", "ALC", 11800, True),
+        Station("Vila Nova da Baronia", "VNB", 26300, False),
+        Station("Alvito", "ALV", 34600, True),
+        Station("Cuba", "CUB", 46800, True),
+        Station("Beja", "BEJ", 63500, True),
+    ]
+    geo = Geography(
+        shape=[
+            # Stretched west to east so the line fills the map (the real line runs more to
+            # the south-east); the order of the stations and their spacing are kept.
+            (38.5600, -8.5500),  # towards Lisboa and Évora
+            (38.5200, -8.4200),  # Casa Branca
+            (38.5000, -8.3300),
+            (38.4600, -8.2400),  # Alcáçovas
+            (38.4000, -8.1200),
+            (38.3600, -8.0200),  # Vila Nova da Baronia
+            (38.3300, -7.9400),  # Alvito
+            (38.3000, -7.8600),
+            (38.2500, -7.7800),  # Cuba
+            (38.1700, -7.7000),
+            (38.1000, -7.6200),  # Beja
+            (38.0400, -7.5800),  # towards Funcheira
+        ],
+        station_shape_index={"CBR": 1, "ALC": 3, "ALV": 6, "CUB": 8, "BEJ": 10},
+        start_label="Lisboa · Évora",
+        end_label="Funcheira",
+        water="none",  # inland: the only water is the Alvito reservoir, drawn with the scenery
+        water_side=-1,
+        water_label="Barragem do Alvito",
+        scenery="alentejo-storybook",
+        towns={"Casa Branca": 18, "Alcáçovas": 38, "Alvito": 32, "Cuba": 38, "Beja": 56},
+        hills_label="Planície Alentejana",
+    )
+    return build_line("Linha do Alentejo", stations, west_edge=-2500, east_edge=66000, geo=geo)
+
+
 def _lisboa():
     from railgame.network import lisboa_norte  # network.py imports this module
 
@@ -280,4 +324,5 @@ LINES = {
     "oeste": oeste_torres_caldas,
     "douro": douro_regua_ferradosa,
     "lisboa": _lisboa,
+    "alentejo": alentejo_casa_branca_beja,
 }

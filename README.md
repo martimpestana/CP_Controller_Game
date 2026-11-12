@@ -1,7 +1,7 @@
 # CP Controller
 
 A railway signalling game on Portuguese lines. You are the controller of a single-track line
-(Algarve, Oeste or Douro), where trains in opposite directions can only pass each other at
+(Algarve, Oeste, Douro or Alentejo), where trains in opposite directions can only pass each other at
 crossing stations. Drivers send you requests, you set the signals and the points, and you try to keep
 every train on time without letting two of them onto the same track.
 
@@ -159,6 +159,22 @@ the start.
 | 7 | Full house | 7 | 4 min |
 | 8 | Morning rush | 11 | 4 min |
 
+### Linha do Alentejo
+
+Casa Branca to Beja, 63 km across the plain. Between Alcáçovas and Alvito there are 23 km of
+single track with nowhere to cross, so where two trains meet matters more than on any other line.
+
+| Level | Name | Trains | Delay limit |
+| --- | --- | --- | --- |
+| 1 | Across the plain | 2 | 3 min |
+| 2 | The long section | 3 | 3 min |
+| 3 | Intercidades to Beja | 3 | 3 min |
+| 4 | The grain train | 4 | 4 min |
+| 5 | Market day in Beja | 5 | 4 min |
+| 6 | Harvest | 6 | 8 min |
+| 7 | Summer heat | 7 | 6 min |
+| 8 | Feira de Beja | 8 | 8 min |
+
 ## Project structure
 
 | File | What it does |
@@ -176,6 +192,7 @@ the start.
 | `railgame/scenery_lisboa.py` | The storybook background of Lisbon (Alfama, Tejo, Oriente...) |
 | `railgame/game.py` | The window: menu, input, result screen |
 | `railgame/scenery_lines.py` | The storybook scenery of each line (towns, hills, vineyards, the sea) |
+| `railgame/scenery_alentejo.py` | The storybook plain of the Alentejo (wheat, cork oaks, storks, the Alvito reservoir) |
 | `railgame/skins.py`, `railgame/themes.py` | Train skins and map colours for the Customise menu |
 | `railgame/assets/` | Game icon and the fonts used in the browser (Liberation Sans, SIL OFL) |
 | `webpage/` | Extras added to the browser page (full screen button) |
