@@ -4,6 +4,7 @@ A level is a list of trains with their timetables. To make a new level, add a Le
 line's list in LEVELS. Times are written as "HH:MM".
 """
 
+import random
 from dataclasses import dataclass
 
 from railgame.netsim import APPEAR_BEFORE, NetSimulation
@@ -45,6 +46,9 @@ class LevelInfo:
     max_average_delay_min: float
     trains: list[TrainPlan]
     line: str = "algarve"  # a key of track.LINES
+    # Some trains reach the map late, by a different amount every time the level is played
+    # (see random_delays). Their own lateness is not counted, only what the controller adds.
+    random_delays: bool = False
 
 
 LEVELS: dict[str, list[LevelInfo]] = {
@@ -170,6 +174,24 @@ LEVELS: dict[str, list[LevelInfo]] = {
             ],
             line="algarve",
         ),
+        LevelInfo(
+            9,
+            "Running late",
+            "Level 7's trains, but some reach the map late, and never the same ones twice. Their own lateness is not counted, only the delay you add.",
+            "16:58",
+            6,
+            [
+                TrainPlan("IR 801", EAST, "17:00"),
+                TrainPlan("R 5712", WEST, "17:00"),
+                TrainPlan("R 5713", EAST, "17:14"),
+                TrainPlan("IR 802", WEST, "17:14"),
+                TrainPlan("R 5715", EAST, "17:28"),
+                TrainPlan("R 5716", WEST, "17:28"),
+                TrainPlan("R 5717", EAST, "17:42"),
+            ],
+            line="algarve",
+            random_delays=True,
+        ),
     ],
     "oeste": [
         LevelInfo(
@@ -289,6 +311,24 @@ LEVELS: dict[str, list[LevelInfo]] = {
             ],
             line="oeste",
         ),
+        LevelInfo(
+            9,
+            "Running late",
+            "Level 7's trains, but some reach the map late, and never the same ones twice. Their own lateness is not counted, only the delay you add.",
+            "15:58",
+            7,
+            [
+                TrainPlan("R 15521", EAST, "16:00"),
+                TrainPlan("M 52121", WEST, "16:06"),
+                TrainPlan("R 15522", WEST, "16:25"),
+                TrainPlan("M 52122", EAST, "16:25"),
+                TrainPlan("R 15524", WEST, "16:47"),
+                TrainPlan("R 15523", EAST, "16:51"),
+                TrainPlan("R 15525", EAST, "17:12"),
+            ],
+            line="oeste",
+            random_delays=True,
+        ),
     ],
     "douro": [
         LevelInfo(
@@ -405,6 +445,23 @@ LEVELS: dict[str, list[LevelInfo]] = {
                 TrainPlan("IR 874", WEST, "17:04"),
             ],
             line="douro",
+        ),
+        LevelInfo(
+            9,
+            "Running late",
+            "Level 7's trains, but some reach the map late, and never the same ones twice. Their own lateness is not counted, only the delay you add.",
+            "14:58",
+            7,
+            [
+                TrainPlan("H 1803", EAST, "15:00"),
+                TrainPlan("R 860121", WEST, "15:08"),
+                TrainPlan("H 1802", WEST, "15:33"),
+                TrainPlan("R 860122", EAST, "15:44"),
+                TrainPlan("IR 873", EAST, "15:47"),
+                TrainPlan("R 860124", WEST, "16:26"),
+            ],
+            line="douro",
+            random_delays=True,
         ),
     ],
     "lisboa": [
@@ -652,6 +709,24 @@ LEVELS: dict[str, list[LevelInfo]] = {
             ],
             line="alentejo",
         ),
+        LevelInfo(
+            9,
+            "Running late",
+            "Level 7's trains, but some reach the map late, and never the same ones twice. Their own lateness is not counted, only the delay you add.",
+            "15:58",
+            6,
+            [
+                TrainPlan("IC 593", EAST, "16:00"),
+                TrainPlan("R 5912", WEST, "16:03"),
+                TrainPlan("R 5913", EAST, "16:10"),
+                TrainPlan("M 59104", WEST, "16:17"),
+                TrainPlan("R 5915", EAST, "17:06"),
+                TrainPlan("IC 594", WEST, "17:10"),
+                TrainPlan("R 5916", WEST, "17:34"),
+            ],
+            line="alentejo",
+            random_delays=True,
+        ),
     ],
 }
 
@@ -777,15 +852,33 @@ def all_levels() -> list[LevelInfo]:
     return [info for levels in LEVELS.values() for info in levels]
 
 
-def build_level(line_key: str, number: int) -> tuple[LevelInfo, Simulation]:
+def build_level(line_key: str, number: int, seed: int | None = None) -> tuple[LevelInfo, Simulation]:
+    """The level's line and trains, ready to play. On a level with random delays, seed picks
+    the delays (None: different every time it is played)."""
     info = LEVELS[line_key][number - 1]
     line = LINES[info.line]()
     if isinstance(line, Network):
         trains = [make_net_timetable(line, plan) for plan in info.trains]
         return info, NetSimulation(line, trains, clock(info.start), info.max_average_delay_min * 60)
     trains = [make_timetable(line, plan) for plan in info.trains]
+    if info.random_delays:
+        random_delays(trains, random.Random(seed))
     sim = Simulation(line, trains, clock(info.start), info.max_average_delay_min * 60)
     return info, sim
+
+
+def random_delays(trains: list[Train], rng: random.Random) -> None:
+    """Make about half of the trains reach the map 1 to 5 minutes late: always at least one,
+    never more than two trains in three. The timetables stay as they were planned."""
+    late = [t for t in trains if rng.random() < 0.5]
+    if not late:
+        late = [rng.choice(trains)]
+    late = late[: max(1, len(trains) * 2 // 3)]
+    for train in late:
+        minutes = rng.randint(1, 5)
+        train.enter_time += minutes * 60
+        train.brought_delay = minutes * 60.0
+        train.announced = False  # the driver says so only shortly before (Simulation.ANNOUNCE_BEFORE)
 
 
 __all__ = ["LEVELS", "LINE_BLURBS", "LINE_NAMES", "all_levels", "LevelInfo", "TrainPlan", "build_level", "clock", "make_timetable", "WEST", "EAST"]

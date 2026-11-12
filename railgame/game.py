@@ -325,9 +325,12 @@ class Game:
         where, trains = LINE_BLURBS.get(self.line_key, ("", ""))
         s.blit(self.f_text.render(f"{where}  Trains: {trains}.", True, MUTED), (S(80), S(98)))
         mouse = pygame.mouse.get_pos()
+        # Two columns; with more than eight levels the cards get a little shorter to fit.
+        per_column = max(4, -(-len(self.levels) // 2))
+        step = min(112, (HEIGHT - 80 - 140) // per_column)
         for i, info in enumerate(self.levels):
-            column, row = divmod(i, 4)
-            rect = SR(80 + column * 570, 140 + row * 112, 550, 98)
+            column, row = divmod(i, per_column)
+            rect = SR(80 + column * 570, 140 + row * step, 550, step - 14)
             hovered = rect.collidepoint(mouse)
             pygame.draw.rect(s, render.BUTTON if hovered else render.CARD, rect, border_radius=S(10))
             s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, WHITE), (rect.x + S(20), rect.y + S(14)))

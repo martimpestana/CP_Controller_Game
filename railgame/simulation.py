@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from railgame.track import EAST, LOOP_HALF, POINT_OFFSET, Line, Point, Signal, Station
 from railgame.train import MIN_DWELL, Stop, Train
 
+ANNOUNCE_BEFORE = 90.0  # seconds before its planned time that a late train says it is late
+NOTICE_SECONDS = 180.0  # how long a driver's message stays in the panel
 STEP = 0.5  # seconds per simulation step (big time jumps are split into steps)
 LOOKAHEAD = 4000.0  # how far ahead a driver looks, in metres
 REQUEST_DISTANCE = 2500.0  # drivers start asking when they are this close
@@ -29,6 +31,20 @@ class Request:
 
 
 @dataclass
+class Notice:
+    """A driver's message that needs no action (for example: running late)."""
+
+    train: Train
+    text: str
+    created: float
+
+
+def _clock(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    return f"{minutes // 60 % 24:02d}:{minutes % 60:02d}"
+
+
+@dataclass
 class Blocker:
     distance: float  # metres from the front of the train
     kind: str  # "stop", "signal" or "point"
@@ -42,6 +58,7 @@ class Simulation:
         self.time = start_time
         self.max_average_delay = max_average_delay
         self.requests: dict[tuple, Request] = {}
+        self.notices: list[Notice] = []  # drivers' messages that need no action, newest last
         self.crash: tuple[Train, Train] | None = None
 
     # ------------------------------------------------------------------ player actions
@@ -169,11 +186,21 @@ class Simulation:
         self.time += dt
         for train in self.trains:
             if train.state == "waiting":
+                self._announce_delay(train)
                 self._try_to_enter(train)
             elif train.state == "running":
                 self._move(train, dt)
         self._check_collisions()
         self._update_requests()
+
+    def _announce_delay(self, train: Train) -> None:
+        """A train that will reach the map late says so a little before it was due: only then
+        does the controller know, and has to change the plan."""
+        if train.announced or self.time < train.planned_enter_time - ANNOUNCE_BEFORE:
+            return
+        train.announced = True
+        minutes = round(train.brought_delay / 60)
+        self.notices.append(Notice(train, f"Running {minutes} min late. We'll reach the map at {_clock(train.enter_time)}.", self.time))
 
     def _try_to_enter(self, train: Train) -> None:
         if self.time < train.enter_time:
@@ -327,7 +354,7 @@ class Simulation:
     def _record_departure(self, train: Train, stop: Stop) -> None:
         stop.departed_at = self.time
         if stop is train.stops[-1]:
-            train.final_delay = max(0.0, stop.departed_at - stop.depart)
+            train.final_delay = max(0.0, stop.departed_at - stop.depart - train.brought_delay)
 
     def _dwell(self, train: Train, stop: Stop) -> None:
         train.speed = 0.0
