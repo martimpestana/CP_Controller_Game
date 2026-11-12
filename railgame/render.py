@@ -1136,10 +1136,17 @@ class Renderer:
 
     def _draw_train_labels(self, screen) -> None:
         """Draw the trains' tags after the stations, so nothing hides them, and move a tag
-        further from its train when it would cover another tag or a station."""
-        taken = [self._station_box(st) for st in self.sim.line.stations]
+        further from its train when it would cover another tag, a station, a signal or points."""
+        taken = [self._station_box(st) for st in self.sim.line.stations] + self._control_boxes()
         for train, ends in self._labels_to_draw:
             self._draw_train_label(screen, train, ends, taken)
+
+    def _control_boxes(self) -> list[pygame.Rect]:
+        """The signals and points, as rectangles that train tags keep clear of (you click them)."""
+        boxes = []
+        for x, y in [self.signal_position(s) for s in self.sim.line.signals] + [self.point_position(p) for p in self.sim.line.points]:
+            boxes.append(pygame.Rect(int(x - S(9)), int(y - S(9)), S(18), S(18)))
+        return boxes
 
     def _station_box(self, st) -> pygame.Rect:
         """The white circle of a station, as a rectangle that train tags keep clear of."""
