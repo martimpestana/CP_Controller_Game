@@ -76,6 +76,15 @@ class Train:
     state: str = "waiting"  # waiting -> running -> finished
     stopped_since: float | None = None
     final_delay: float | None = None
+    # Seconds late when it reaches the edge of the map (levels with random delays). That part
+    # of its delay is not the controller's doing, so delay() leaves it out.
+    brought_delay: float = 0.0
+    announced: bool = True  # False until the driver has said the train is running late
+
+    @property
+    def planned_enter_time(self) -> float:
+        """When the train should have appeared, before any delay it brings with it."""
+        return self.enter_time - self.brought_delay
     # (position, track) where the front of the train last changed track, newest last.
     track_changes: list[tuple[float, int]] = field(default_factory=list)
     # Only used on networks (network.py), where tracks have names instead of numbers:
@@ -140,7 +149,8 @@ class Train:
         return None
 
     def delay(self, now: float) -> float:
-        """Current delay in seconds (never negative)."""
+        """Current delay in seconds (never negative), not counting the delay the train already
+        had when it reached the map (brought_delay)."""
         if self.final_delay is not None:
             return self.final_delay
         recorded = 0.0
@@ -150,4 +160,4 @@ class Train:
         pending = self.pending_departure()
         if pending is not None:
             recorded = max(recorded, now - pending.depart)
-        return max(0.0, recorded)
+        return max(0.0, recorded - self.brought_delay)

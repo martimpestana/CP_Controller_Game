@@ -207,7 +207,7 @@ def careful_player_move(sim):
 
 @pytest.mark.parametrize("info", SINGLE_TRACK_LEVELS, ids=lambda info: f"{info.line}{info.number}")
 def test_careful_player_passes_level(info):
-    _, sim = build_level(info.line, info.number)
+    _, sim = build_level(info.line, info.number, seed=0)  # seed: the same random delays every run
     for _ in range(5 * 3600):
         if sim.over:
             break
@@ -364,3 +364,73 @@ def test_new_train_waits_while_the_first_station_is_full():
     sim = Simulation(line, [*waiting, arriving], 0, 180)
     sim.advance(1)
     assert arriving.state == "waiting"
+
+
+
+# ---------------------------------------------------------------------- random delays (level 9)
+
+RANDOM_LINES = ["algarve", "oeste", "douro", "alentejo"]
+
+
+@pytest.mark.parametrize("line", RANDOM_LINES)
+def test_level_nine_has_random_delays_and_the_others_do_not(line):
+    from railgame.levels import LEVELS
+
+    levels = LEVELS[line]
+    assert len(levels) == 9 and levels[8].random_delays
+    assert not any(info.random_delays for info in levels[:8])
+    assert [p.name for p in levels[8].trains] == [p.name for p in levels[6].trains]  # level 7's trains
+    for number in range(1, 9):
+        _, sim = build_level(line, number, seed=1)
+        assert all(t.brought_delay == 0 for t in sim.trains)
+
+
+@pytest.mark.parametrize("line", RANDOM_LINES)
+def test_random_delays_change_from_one_game_to_the_next(line):
+    seen = set()
+    for seed in range(12):
+        _, sim = build_level(line, 9, seed=seed)
+        late = [t for t in sim.trains if t.brought_delay]
+        assert 1 <= len(late) <= max(1, len(sim.trains) * 2 // 3)
+        assert all(60 <= t.brought_delay <= 300 and t.brought_delay % 60 == 0 for t in late)
+        seen.add(tuple(t.brought_delay for t in sim.trains))
+    assert len(seen) > 6  # not the same delays every time
+
+
+def test_delay_a_train_brings_with_it_is_not_counted():
+    _, sim = build_level("algarve", 9, seed=2)
+    train = next(t for t in sim.trains if t.brought_delay)
+    first = train.stops[0]
+    first.departed_at = first.depart + train.brought_delay  # left exactly as late as it arrived
+    assert train.delay(first.departed_at) == 0
+    first.departed_at += 90  # and then the controller held it for another minute and a half
+    assert train.delay(first.departed_at) == 90
+
+
+@pytest.mark.parametrize("line", RANDOM_LINES)
+def test_careful_player_passes_level_nine_almost_always(line):
+    passed = 0
+    for seed in range(10):
+        _, sim = build_level(line, 9, seed=seed)
+        for _ in range(6 * 3600):
+            if sim.over:
+                break
+            careful_player_move(sim)
+            sim.advance(1)
+        passed += sim.crash is None and sim.passed
+    assert passed >= 9
+
+
+def test_a_late_train_says_so_only_shortly_before_it_was_due():
+    from railgame.simulation import ANNOUNCE_BEFORE
+
+    _, sim = build_level("alentejo", 9, seed=3)
+    late = min((t for t in sim.trains if t.brought_delay), key=lambda t: t.planned_enter_time)
+    assert not late.announced and not sim.notices  # at the start nobody knows
+    sim.advance(late.planned_enter_time - ANNOUNCE_BEFORE - sim.time - 5)
+    assert not late.announced and not sim.notices
+    sim.advance(10)
+    assert late.announced
+    assert [n.train for n in sim.notices] == [late]
+    assert f"{round(late.brought_delay / 60)} min late" in sim.notices[0].text
+    assert all(t.announced for t in sim.trains if not t.brought_delay)  # trains on time say nothing

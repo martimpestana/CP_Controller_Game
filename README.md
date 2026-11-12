@@ -119,6 +119,7 @@ the start.
 | 6 | Market day in Olhão | 6 | 4 min |
 | 7 | Beach traffic | 7 | 5 min |
 | 8 | Summer chaos | 8 | 7 min |
+| 9 | Running late (random delays) | 7 | 6 min |
 
 ### Linha do Oeste
 
@@ -132,6 +133,7 @@ the start.
 | 6 | Two freights | 6 | 5 min |
 | 7 | Cement and passengers | 7 | 6 min |
 | 8 | Night of the freights | 8 | 7 min |
+| 9 | Running late (random delays) | 7 | 7 min |
 
 ### Linha do Douro
 
@@ -145,6 +147,7 @@ the start.
 | 6 | Steam on the Douro | 5 | 5 min |
 | 7 | Two steam trains | 6 | 6 min |
 | 8 | Harvest season | 8 | 8 min |
+| 9 | Running late (random delays) | 6 | 7 min |
 
 ### Linha do Norte (Lisbon)
 
@@ -174,6 +177,11 @@ single track with nowhere to cross, so where two trains meet matters more than o
 | 6 | Harvest | 6 | 8 min |
 | 7 | Summer heat | 7 | 6 min |
 | 8 | Feira de Beja | 8 | 8 min |
+| 9 | Running late (random delays) | 7 | 6 min |
+
+Level 9 on the Algarve, Oeste, Douro and Alentejo lines has the trains of level 7, but some of
+them reach the map 1 to 5 minutes late, and never the same ones twice: the list of next trains
+says "delayed 3 min". Only the delay you add is counted, not the lateness a train brings with it.
 
 ## Project structure
 

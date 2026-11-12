@@ -12,7 +12,7 @@ import pygame
 
 from railgame import skins, ui
 from railgame.layout import Layout, NearestSample
-from railgame.simulation import Request, Simulation
+from railgame.simulation import NOTICE_SECONDS, Request, Simulation
 from railgame.track import EAST, Point, Signal
 from railgame.train import Train
 from railgame.ui import S, SR, font
@@ -96,6 +96,7 @@ SB_NIGHT = dict(
     SB_ROOF=(118, 62, 46), SB_TURBINE=(150, 154, 166),
 )
 LIT_WINDOW = (255, 214, 110)
+ORANGE_LATE = (255, 160, 70)  # "delayed N min" in the list of next trains
 # The themes that get the storybook map. Sunset and Control room draw the day or the night map
 # and then colour it every frame (see grade_map), so the moving parts get the same look.
 STORYBOOK_MODES = ("day", "night", "sunset", "retro")
@@ -1278,7 +1279,22 @@ class Renderer:
         bottom = S(REQUESTS_BOTTOM)
         width = S(WIDTH - PANEL_X - 32)
         self.request_buttons = []
-        if not requests:
+        # Messages that need no action (a train running late), shown for a few minutes, on top.
+        notices = [n for n in getattr(self.sim, "notices", []) if self.sim.time - n.created < NOTICE_SECONDS]
+        for notice in notices:
+            lines = self._wrap(notice.text, width - S(30))
+            height = S(40) + S(19) * len(lines)
+            card = pygame.Rect(S(PANEL_X + 16), y, width, height)
+            pygame.draw.rect(screen, CARD, card, border_radius=S(8))
+            pygame.draw.rect(screen, ORANGE_LATE, (card.x, card.y, S(5), card.h), border_radius=S(3))
+            pygame.draw.rect(screen, ORANGE_LATE, card, max(1, S(1)), border_radius=S(8))
+            screen.blit(self.f_bold.render(notice.train.name, True, WHITE), (card.x + S(16), card.y + S(9)))
+            tag = self.f_small.render("delayed", True, ORANGE_LATE)
+            screen.blit(tag, (card.right - tag.get_width() - S(12), card.y + S(11)))
+            for j, line in enumerate(lines):
+                screen.blit(self.f_text.render(line, True, TEXT), (card.x + S(16), card.y + S(32 + 19 * j)))
+            y += height + S(8)
+        if not requests and not notices:
             screen.blit(self.f_text.render("All quiet on the line.", True, MUTED), (S(PANEL_X + 18), y))
             if self.first_level:  # a few words for someone playing for the first time
                 tips = (
@@ -1333,15 +1349,21 @@ class Renderer:
         right = WIDTH - 18
         pygame.draw.line(screen, CARD, (S(PANEL_X + 16), S(y - 8)), (S(right), S(y - 8)), max(1, S(1)))
         screen.blit(self.f_bold.render("Next trains", True, WHITE), (S(x0), S(y)))
-        waiting = sorted((t for t in self.sim.trains if t.state == "waiting"), key=lambda t: t.enter_time)
+        def due(t):  # what the controller knows: the planned time until the driver says otherwise
+            return t.enter_time if t.announced else t.planned_enter_time
+
+        waiting = sorted((t for t in self.sim.trains if t.state == "waiting"), key=due)
         y += 26
         if not waiting:
             screen.blit(self.f_small.render("No more trains to come.", True, MUTED), (S(x0), S(y)))
             return
         first, last = self.sim.line.stations[0].name, self.sim.line.stations[-1].name
         for train in waiting[:5]:
+            late = train.brought_delay and train.announced
+            if y + (39 if late else 24) > HEIGHT - 140:  # keep clear of "How to play"
+                break
             colour = train_colour(train)
-            screen.blit(self.f_text.render(clock_text(train.enter_time), True, TEXT), (S(x0), S(y)))
+            screen.blit(self.f_text.render(clock_text(due(train)), True, TEXT), (S(x0), S(y)))
             chip = SR(x0 + 56, y + 1, 26, 18)
             pygame.draw.rect(screen, colour, chip, border_radius=S(4))
             text = self.f_bold.render(train_kind(train), True, BG)
@@ -1349,9 +1371,13 @@ class Renderer:
             screen.blit(self.f_text.render(train.name.split()[-1], True, TEXT), (S(x0 + 88), S(y)))
             side = f"from {first}" if train.direction == EAST else f"from {last}"
             screen.blit(self.f_small.render(side, True, MUTED), (S(x0 + 150), S(y + 2)))
-            minutes = (train.enter_time - self.sim.time) / 60
+            minutes = (due(train) - self.sim.time) / 60
             when = self.f_bold.render("now" if minutes < 0.5 else f"{minutes:.0f} min", True, YELLOW if minutes < 3 else TEXT)
             screen.blit(when, (S(right) - when.get_width(), S(y)))
+            if late:  # random delays: it reaches the map late (not your fault), and has said so
+                late = self.f_small.render(f"delayed {train.brought_delay / 60:.0f} min", True, ORANGE_LATE)
+                screen.blit(late, (S(x0 + 150), S(y + 19)))
+                y += 15
             y += 24
 
     def _draw_legend(self, screen) -> None:
