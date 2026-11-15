@@ -135,3 +135,16 @@ def test_menu_buttons_do_not_cover_the_lines():
         assert rect.collidelist(lines) < 0
     for i, rect in enumerate(lines):
         assert rect.collidelist(lines[i + 1 :]) < 0
+
+
+
+def test_every_line_card_shows_where_the_line_is():
+    pygame.init()
+    game = Game(pygame.display.set_mode((1280, 720)))
+    for key in LEVELS:
+        coords = game._line_coords(key)
+        assert coords, f"no place on the map for {key}"
+        for lat, lon in coords:  # somewhere in mainland Portugal
+            assert 36.8 < lat < 42.3 and -9.7 < lon < -6.0
+    game.scene = "menu"
+    game.draw()
