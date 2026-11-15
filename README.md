@@ -202,6 +202,7 @@ says "delayed 3 min". Only the delay you add is counted, not the lateness a trai
 | `railgame/scenery_lines.py` | The storybook scenery of each line (towns, hills, vineyards, the sea) |
 | `railgame/scenery_alentejo.py` | The storybook plain of the Alentejo (wheat, cork oaks, storks, the Alvito reservoir) |
 | `railgame/skins.py`, `railgame/themes.py` | Train skins and map colours for the Customise menu |
+| `railgame/minimap.py` | The small map of Portugal on each line's card in the main menu |
 | `railgame/assets/` | Game icon and the fonts used in the browser (Liberation Sans, SIL OFL) |
 | `webpage/` | Extras added to the browser page (full screen button) |
 | `tests/` | pytest tests |

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pygame
 
-from railgame import render, skins
+from railgame import minimap, render, skins
 from railgame.levels import LEVELS, LINE_BLURBS, LINE_NAMES, build_level
 from railgame.netrender import NetRenderer
 from railgame.netsim import NetSimulation
@@ -26,7 +26,7 @@ from railgame.render import (
 )
 from railgame.settings import Settings
 from railgame.themes import THEME_NAMES, THEMES
-from railgame.track import Point, Signal
+from railgame.track import LINES, Point, Signal
 from railgame.ui import (
     IN_BROWSER,
     S,
@@ -286,8 +286,12 @@ class Game:
             s.blit(self.f_text.render(where, True, MUTED), (rect.x + S(20), rect.y + S(46)))
             if card >= 100:
                 s.blit(self.f_text.render(f"Trains: {trains}", True, TEXT), (rect.x + S(20), rect.y + S(74)))
+            # Where the line is: a small map of Portugal on the right of the card.
+            box = pygame.Rect(0, 0, S(card - 10) * 0.55, S(card - 10))
+            box.midright = (rect.right - S(12), rect.centery)
+            minimap.draw(s, box, self._line_coords(key))
             meta = self.f_small.render(f"{len(levels)} levels", True, MUTED)
-            s.blit(meta, (rect.right - meta.get_width() - S(20), rect.y + S(18)))
+            s.blit(meta, (box.left - meta.get_width() - S(14), rect.y + S(18)))
             self.buttons.append((rect, f"line:{key}"))
             y += card + gap
 
@@ -316,6 +320,13 @@ class Game:
         self.button(SR(help_x, HEIGHT - 70, 180, 44), "Customise", "customise")
         if not IN_BROWSER:  # a web page is closed with the browser tab instead
             self.button(SR(help_x + 200, HEIGHT - 70, 120, 44), "Quit", "quit")
+
+    def _line_coords(self, key: str) -> list[tuple[float, float]]:
+        """Where a line is on the map of Portugal (worked out once per line)."""
+        cache = self.__dict__.setdefault("_coords", {})
+        if key not in cache:
+            cache[key] = minimap.line_coords(key, LINES[key]())
+        return cache[key]
 
     def draw_levels(self) -> None:
         """The levels of the chosen line, from the first shift to the hardest one."""
