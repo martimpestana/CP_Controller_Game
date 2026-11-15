@@ -1,4 +1,4 @@
-"""The player's choices from the Customise menu (train skins and colour theme).
+"""The player's choices from the Customise menu (train skins, colour theme and language).
 
 They are saved to a small JSON file in the user's home folder so they are still there the next
 time the game starts. In the browser, or if the file can't be written, the choices just last
@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 
+from railgame.i18n import LANGUAGES
 from railgame.skins import DEFAULT_SKINS, SKINS
 from railgame.themes import DEFAULT_THEME, THEMES
 
@@ -19,6 +20,7 @@ class Settings:
     def __init__(self):
         self.skins = dict(DEFAULT_SKINS)
         self.theme = DEFAULT_THEME
+        self.language = "en"
         self.path = SETTINGS_FILE
 
     def skin(self, kind: str) -> str:
@@ -34,8 +36,13 @@ class Settings:
             self.theme = theme
             self.save()
 
+    def set_language(self, code: str) -> None:
+        if code in LANGUAGES:
+            self.language = code
+            self.save()
+
     def to_dict(self) -> dict:
-        return {"skins": self.skins, "theme": self.theme}
+        return {"skins": self.skins, "theme": self.theme, "language": self.language}
 
     @classmethod
     def load(cls, path: Path = SETTINGS_FILE) -> "Settings":
@@ -52,6 +59,8 @@ class Settings:
                     settings.skins[kind] = skin
             if data.get("theme") in THEMES:
                 settings.theme = data["theme"]
+            if data.get("language") in LANGUAGES:
+                settings.language = data["language"]
         return settings
 
     def save(self) -> None:

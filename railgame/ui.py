@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pygame
 
+from railgame import i18n
+
 try:
     from pygame import gfxdraw
 except ImportError:  # some builds (e.g. in the browser) may not have it
@@ -45,7 +47,27 @@ def SR(x: float, y: float, w: float, h: float) -> pygame.Rect:
 FONT_DIR = Path(__file__).parent / "assets" / "fonts"
 
 
-def font(size: int, bold: bool = False) -> pygame.font.Font:
+class _Font:
+    """A font that shows every text in the chosen language (see i18n.py)."""
+
+    def __init__(self, font: pygame.font.Font):
+        self._font = font
+
+    def render(self, text, *args, **kwargs):
+        return self._font.render(i18n.t(text, collect=text not in i18n._LINES), *args, **kwargs)
+
+    def size(self, text):
+        return self._font.size(i18n.t(text, collect=False))
+
+    def __getattr__(self, name):
+        return getattr(self._font, name)
+
+
+def font(size: int, bold: bool = False) -> _Font:
+    return _Font(_font(size, bold))
+
+
+def _font(size: int, bold: bool = False) -> pygame.font.Font:
     if IN_BROWSER:
         # The browser has no system fonts. pygame's built-in one is a heavy bold face that
         # looks blurry, so the game carries its own copy of Liberation Sans (same widths as Arial).
