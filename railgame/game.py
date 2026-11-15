@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pygame
 
-from railgame import minimap, render, skins
+from railgame import i18n, minimap, render, skins
 from railgame.levels import LEVELS, LINE_BLURBS, LINE_NAMES, build_level
 from railgame.netrender import NetRenderer
 from railgame.netsim import NetSimulation
@@ -54,7 +54,9 @@ class Game:
         self.f_head = font(20, bold=True)
         self.f_text = font(16)
         self.f_small = font(14)
+        self.f_head_small = font(15, bold=True)
         self.settings = Settings.load()
+        i18n.set_language(self.settings.language)
         self.customise_kind = skins.TRAIN_TYPES[0]  # the tab open in the Customise menu
         render.apply_theme(THEMES[self.settings.theme])
 
@@ -119,6 +121,13 @@ class Game:
         self.draw()
         pygame.display.flip()
 
+    def toggle_language(self) -> None:
+        """The language button: English <-> Portuguese. The choice is remembered for next time."""
+        codes = list(i18n.LANGUAGES)
+        code = codes[(codes.index(i18n.LANG) + 1) % len(codes)]
+        i18n.set_language(code)
+        self.settings.set_language(code)
+
     def handle(self, event) -> None:
         if event.type == pygame.QUIT:
             self.running = False
@@ -181,6 +190,9 @@ class Game:
         if self.renderer.menu_button_at(pos):
             self.scene = "menu"
             return
+        if self.renderer.language_button_at(pos):
+            self.toggle_language()
+            return
         request = self.renderer.request_button_at(pos)
         if request is not None:
             # "Do it" on a driver's request flips the signal or points the driver asked about.
@@ -221,6 +233,8 @@ class Game:
         elif action.startswith("theme:"):
             self.settings.set_theme(action.split(":")[1])
             render.apply_theme(THEMES[self.settings.theme])
+        elif action == "language":
+            self.toggle_language()
         elif action == "quit":
             self.running = False
 
@@ -234,14 +248,10 @@ class Game:
 
     def draw(self) -> None:
         self.buttons = []
-        if self.scene == "menu":
-            self.draw_menu()
-            return
-        if self.scene == "levels":
-            self.draw_levels()
-            return
-        if self.scene == "customise":
-            self.draw_customise()
+        if self.scene in ("menu", "levels", "customise"):
+            {"menu": self.draw_menu, "levels": self.draw_levels, "customise": self.draw_customise}[self.scene]()
+            # The language button, top right (in a level it is in the top bar).
+            self.buttons.append((render.draw_language_button(self.screen, self.f_head_small), "language"))
             return
         if self.scene == "loading":
             self.draw_loading()
@@ -298,28 +308,36 @@ class Game:
         help_x = 780
         s.blit(self.f_head.render("How it works", True, WHITE), (S(help_x), S(180)))
         tips = [
-            "The line has a single track. Trains in",
-            "opposite directions can only pass each",
+            "The line has a single track. Trains in opposite directions can only pass each "
             "other at crossing stations (two tracks).",
-            "",
-            "Drivers send you requests. Each one stays",
-            "on screen until you do what it asks.",
-            "",
-            "Click a signal to turn it green or red.",
-            "It turns red again after a train passes.",
-            "",
-            "Click a set of points to send trains to",
-            "track 1 (straight) or track 2 (yellow).",
-            "",
-            "Two trains on the same track = accident.",
-            "Too much average delay = repeat the level.",
+            "Drivers send you requests. Each one stays on screen until you do what it asks.",
+            "Click a signal to turn it green or red. It turns red again after a train passes.",
+            "Click a set of points to send trains to track 1 (straight) or track 2 (yellow).",
+            "Two trains on the same track = accident. Too much average delay = repeat the level.",
         ]
-        for i, tip in enumerate(tips):
-            s.blit(self.f_text.render(tip, True, TEXT), (S(help_x), S(220 + i * 24)))
+        y = 220
+        for tip in tips:
+            for line in self.renderer_wrap(tip, S(WIDTH - help_x - 50)):
+                s.blit(self.f_text.render(line, True, TEXT), (S(help_x), S(y)))
+                y += 24
+            y += 24
         # Under "How it works", so the list of lines has the whole left column.
         self.button(SR(help_x, HEIGHT - 70, 180, 44), "Customise", "customise")
         if not IN_BROWSER:  # a web page is closed with the browser tab instead
             self.button(SR(help_x + 200, HEIGHT - 70, 120, 44), "Quit", "quit")
+
+    def renderer_wrap(self, text: str, width: int) -> list[str]:
+        """A sentence (in the chosen language) cut into lines that fit in width."""
+        lines, current = [], ""
+        for word in i18n.t(text).split():
+            test = (current + " " + word).strip()
+            if self.f_text.size(test)[0] > width and current:
+                lines.append(current)
+                current = word
+            else:
+                current = test
+        lines.append(current)
+        return i18n.wrapped(lines)
 
     def _line_coords(self, key: str) -> list[tuple[float, float]]:
         """Where a line is on the map of Portugal (worked out once per line)."""
@@ -345,7 +363,7 @@ class Game:
             hovered = rect.collidepoint(mouse)
             pygame.draw.rect(s, render.BUTTON if hovered else render.CARD, rect, border_radius=S(10))
             s.blit(self.f_head.render(f"Level {info.number} · {info.title}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
-            words, lines, current = info.description.split(), [], ""
+            words, lines, current = i18n.t(info.description).split(), [], ""
             for word in words:
                 test = (current + " " + word).strip()
                 if self.f_small.size(test)[0] > rect.width - S(40):
@@ -354,6 +372,7 @@ class Game:
                 else:
                     current = test
             lines.append(current)
+            i18n.wrapped(lines)
             for j, text in enumerate(lines[:2]):
                 s.blit(self.f_small.render(text, True, MUTED), (rect.x + S(20), rect.y + S(46 + j * 20)))
             meta = self.f_small.render(
@@ -470,7 +489,7 @@ class Game:
             )
         text = self.f_title.render(title, True, colour)
         s.blit(text, text.get_rect(center=(box.centerx, box.y + S(60))))
-        words, lines, current = detail.split(), [], ""
+        words, lines, current = i18n.t(detail).split(), [], ""
         for word in words:
             test = (current + " " + word).strip()
             if self.f_text.size(test)[0] > box.width - S(60):
@@ -479,6 +498,7 @@ class Game:
             else:
                 current = test
         lines.append(current)
+        i18n.wrapped(lines)
         for i, line in enumerate(lines):
             t = self.f_text.render(line, True, TEXT)
             s.blit(t, t.get_rect(center=(box.centerx, box.y + S(120 + i * 24))))

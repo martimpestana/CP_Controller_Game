@@ -443,6 +443,9 @@ class NetRenderer(Renderer):
         right = WIDTH - 18
         pygame.draw.line(screen, R.CARD, (S(PANEL_X + 16), S(y - 8)), (S(right), S(y - 8)), max(1, S(1)))
         screen.blit(self.f_bold.render("Next trains", True, R.WHITE), (S(x0), S(y)))
+        done = sum(1 for t in self.sim.trains if t.state == "finished")
+        text = self.f_small.render(f"Trains done {done}/{len(self.sim.trains)}", True, R.MUTED)
+        screen.blit(text, (S(right) - text.get_width(), S(y + 2)))
         waiting = sorted((t for t in self.sim.trains if t.state == "waiting"), key=lambda t: t.enter_time)
         y += 26
         if not waiting:

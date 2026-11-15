@@ -10,7 +10,7 @@ import random
 
 import pygame
 
-from railgame import skins, ui
+from railgame import i18n, skins, ui
 from railgame.layout import Layout, NearestSample
 from railgame.simulation import NOTICE_SECONDS, Request, Simulation
 from railgame.track import EAST, Point, Signal
@@ -283,6 +283,20 @@ def train_colour(train: Train) -> tuple[int, int, int]:
     return EAST_COLOUR if train.direction == EAST else WEST_COLOUR
 
 
+
+def draw_language_button(screen, f, short: bool = False) -> pygame.Rect:
+    """The language button at the top right of every screen: "Language: English" or
+    "Idioma: Português" ("Language: EN" in a level, where the top bar is full). A click changes
+    the language."""
+    name = i18n.LANG.upper() if short else i18n.LANGUAGES[i18n.LANG]
+    text = f.render(f"{i18n.t('Language')}: {name}", True, WHITE)
+    rect = pygame.Rect(0, S(13), text.get_width() + S(20), S(30))
+    rect.right = S(WIDTH - 14)
+    hovered = rect.collidepoint(pygame.mouse.get_pos())
+    pygame.draw.rect(screen, BUTTON_ON if hovered else BUTTON, rect, border_radius=S(6))
+    screen.blit(text, text.get_rect(center=rect.center))
+    return rect
+
 class Renderer:
     first_level = False  # level 1 of a line shows a few tips (set in draw)
 
@@ -300,6 +314,7 @@ class Renderer:
         self.speed_buttons: list[tuple[pygame.Rect, int]] = []
         self.restart_button: pygame.Rect | None = None
         self.menu_button: pygame.Rect | None = None
+        self.language_button: pygame.Rect | None = None
         self.request_buttons: list[tuple[pygame.Rect, Request]] = []
         self.train_boxes: list[tuple[pygame.Rect, Train]] = []
         self._prepare_background()
@@ -338,6 +353,9 @@ class Renderer:
 
     def menu_button_at(self, pos: tuple[int, int]) -> bool:
         return self.menu_button is not None and self.menu_button.collidepoint(pos)
+
+    def language_button_at(self, pos: tuple[int, int]) -> bool:
+        return self.language_button is not None and self.language_button.collidepoint(pos)
 
     def request_button_at(self, pos: tuple[int, int]) -> Request | None:
         """The request whose "Do it" button is at this position, if any."""
@@ -1259,17 +1277,19 @@ class Renderer:
         screen.blit(text, text.get_rect(center=self.menu_button.center))
         x = self.menu_button.right
 
-        x += S(24)
+        # The language, top right (click to change it); "Trains done" is in the Next trains panel.
+        self.language_button = draw_language_button(screen, self.f_bold, short=True)
+
+        x += S(18)
         average = sim.average_delay()
         limit = sim.max_average_delay
         colour = GREEN if average < limit * 0.5 else YELLOW if average <= limit else RED
         text = self.f_bold.render(f"Average delay {minutes_text(average)}", True, colour)
         screen.blit(text, (x, S(19)))
-        x += text.get_width() + S(14)
-        screen.blit(self.f_text.render(f"(limit {limit / 60:.0f} min)", True, MUTED), (x, S(19)))
-        done = sum(1 for t in sim.trains if t.state == "finished")
-        text = self.f_text.render(f"Trains done {done}/{len(sim.trains)}", True, MUTED)
-        screen.blit(text, (S(WIDTH - 18) - text.get_width(), S(19)))
+        x += text.get_width() + S(10)
+        text = self.f_text.render(f"(limit {limit / 60:.0f} min)", True, MUTED)
+        if x + text.get_width() < self.language_button.left - S(6):  # left out if there is no room
+            screen.blit(text, (x, S(19)))
 
     def _draw_requests(self, screen, hover) -> None:
         pygame.draw.rect(screen, PANEL, SR(PANEL_X, TOP_BAR, WIDTH - PANEL_X, HEIGHT - TOP_BAR))
@@ -1333,6 +1353,7 @@ class Renderer:
             y += height + S(10)
 
     def _wrap(self, text: str, width: int) -> list[str]:
+        text = i18n.t(text)  # translate the whole sentence before cutting it into lines
         lines, current = [], ""
         for word in text.split():
             test = (current + " " + word).strip()
@@ -1342,13 +1363,16 @@ class Renderer:
             else:
                 current = test
         lines.append(current)
-        return lines
+        return i18n.wrapped(lines)
 
     def _draw_next_trains(self, screen) -> None:
         x0, y = PANEL_X + 18, REQUESTS_BOTTOM + 10
         right = WIDTH - 18
         pygame.draw.line(screen, CARD, (S(PANEL_X + 16), S(y - 8)), (S(right), S(y - 8)), max(1, S(1)))
         screen.blit(self.f_bold.render("Next trains", True, WHITE), (S(x0), S(y)))
+        done = sum(1 for t in self.sim.trains if t.state == "finished")
+        text = self.f_small.render(f"Trains done {done}/{len(self.sim.trains)}", True, MUTED)
+        screen.blit(text, (S(right) - text.get_width(), S(y + 2)))
         def due(t):  # what the controller knows: the planned time until the driver says otherwise
             return t.enter_time if t.announced else t.planned_enter_time
 
