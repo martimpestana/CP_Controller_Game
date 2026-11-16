@@ -191,6 +191,8 @@ class NetSimulation:
                 return Blocker(it.distance, "stop", obj)
             if kind == "signal" and not obj.green:
                 return Blocker(it.distance - SIGNAL_MARGIN, "signal", obj)
+            if kind == "facing" and self.line.drivers_refuse_wrong_way and self.wrong_way(train, obj):
+                return Blocker(it.distance - SIGNAL_MARGIN, "point", obj)  # the driver will not take the wrong line
             if kind == "trailing" and obj.diverging:
                 return Blocker(it.distance - SIGNAL_MARGIN, "point", obj)
             if kind == "merge" and obj.track != it.track:
@@ -237,23 +239,41 @@ class NetSimulation:
                 return it.track
         return None
 
-    def _targets(self, train: Train, after: float) -> list[str]:
-        """The tracks the driver wants to reach after this position: the platforms of the next
-        stop beyond it (free ones first), or the tracks off the map."""
+    def _next_goal(self, train: Train, after: float) -> Stop | None:
+        """The next stop of the train beyond this position (None: it only has to leave the map)."""
         d = train.direction
         for stop in train.stops:
             if stop.served or stop.departed_at is not None:
                 continue
             if (stop.station.stop_position(d) - after) * d <= 0:
                 continue
-            options = list(stop.options or (stop.track,))
-            taken = {
-                self._stop_track(other, stop.station)
-                for other in self.running_trains
-                if other is not train
-            }
-            return [o for o in options if o not in taken] + [o for o in options if o in taken]
-        return list(train.exit_tracks)
+            return stop
+        return None
+
+    def _targets(self, train: Train, after: float) -> list[str]:
+        """The tracks the driver wants to reach after this position: the platforms of the next
+        stop beyond it (free ones first), or the tracks off the map."""
+        stop = self._next_goal(train, after)
+        if stop is None:
+            return list(train.exit_tracks)
+        options = list(stop.options or (stop.track,))
+        taken = {
+            self._stop_track(other, stop.station)
+            for other in self.running_trains
+            if other is not train
+        }
+        return [o for o in options if o not in taken] + [o for o in options if o in taken]
+
+    def wrong_way(self, train: Train, switch: Switch) -> bool:
+        """Do these points, as they are set, send the train onto a line from which it can never
+        reach its next stop (or its way off the map), while the other way would?"""
+        stop = self._next_goal(train, switch.pos)
+        goals = (stop.options or (stop.track,)) if stop is not None else train.exit_tracks
+        d = train.direction
+        other = switch.straight if switch.diverging else switch.branch
+        if any(self._reaches(switch.track, switch.pos, d, goal) for goal in goals):
+            return False
+        return any(self._reaches(other, switch.pos, d, goal) for goal in goals)
 
     def wanted_branch(self, train: Train, switch: Switch) -> str | None:
         for target in self._targets(train, switch.pos):
@@ -406,6 +426,8 @@ class NetSimulation:
             train.state = "finished"
             if train.final_delay is None:
                 train.final_delay = train.delay(self.time)
+            if self.line.drivers_refuse_wrong_way and train.exit_tracks and train.track not in train.exit_tracks:
+                train.final_delay += LOST_PENALTY  # it left the map on the wrong line
 
     def _lost(self, train: Train) -> None:
         """A train sent the wrong way ended up at the buffer stops, where it has nothing to do.
@@ -501,8 +523,14 @@ class NetSimulation:
         out = []
         name = self.line.track_name
         waiting_at: Stop | None = None
+        past_red = False  # beyond a red signal the driver only asks for a junction set the wrong way
         for it in self.walk(train, REQUEST_DISTANCE, want=True):
             kind, obj = it.kind, it.obj
+            if past_red:
+                if kind in ("stop", "signal", "train", "buffer", "edge"):
+                    break
+                if kind != "facing" or not self.wrong_way(train, obj):
+                    continue
             if kind == "stop":
                 ready_soon = (
                     it.distance <= STOP_TOLERANCE
@@ -533,13 +561,16 @@ class NetSimulation:
                     and pending is not None
                     and pending.station is obj.station
                     and train.track in self.platform_tracks(obj.station)
+                    and abs(train.pos - obj.station.stop_position(train.direction)) < 50  # at the platform
                 )
                 if standing or (waiting_at is not None and waiting_at.station is obj.station):
                     text = f"Ready to leave {obj.station.name} from {name(it.track)}. Signal {obj.id} to green, please."
                 else:
                     text = f"Coming to {obj.station.name} on {name(it.track)}. Signal {obj.id} to green, please."
                 out.append(((train.name, obj.id), text, obj.id))
-                break  # one red signal at a time
+                if not self.line.drivers_refuse_wrong_way:
+                    break  # one red signal at a time
+                past_red = True
             elif kind in ("train", "buffer", "edge"):
                 break
         return out
