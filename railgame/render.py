@@ -309,8 +309,7 @@ class Renderer:
     def __init__(self, sim: Simulation, train_skins: dict[str, str] | None = None):
         self.sim = sim
         self.skins = train_skins or dict(skins.DEFAULT_SKINS)
-        box = sim.line.geo.map_box or (40, TOP_BAR + 120, PANEL_X - 80, HEIGHT - TOP_BAR - 250)
-        self.layout = Layout(sim.line, tuple(S(v) for v in box), ui.scale())
+        self.layout = self._make_layout()
         self.gap = self.layout.track_gap
         self.f_small = font(13)
         self.f_text = font(15)
@@ -324,6 +323,11 @@ class Renderer:
         self.request_buttons: list[tuple[pygame.Rect, Request]] = []
         self.train_boxes: list[tuple[pygame.Rect, Train]] = []
         self._prepare_background()
+
+    def _make_layout(self):
+        line = self.sim.line
+        box = line.geo.map_box or (40, TOP_BAR + 120, PANEL_X - 80, HEIGHT - TOP_BAR - 250)
+        return Layout(line, tuple(S(v) for v in box), ui.scale())
 
     # ------------------------------------------------------------------ positions used for clicks
 
@@ -1173,9 +1177,13 @@ class Renderer:
             boxes.append(pygame.Rect(int(x - S(9)), int(y - S(9)), S(18), S(18)))
         return boxes
 
+    def _station_layout(self, st):
+        """The layout a station is drawn with (a map with a branch line has two)."""
+        return self.layout
+
     def _station_box(self, st) -> pygame.Rect:
         """The white circle of a station, as a rectangle that train tags keep clear of."""
-        lay = self.layout
+        lay = self._station_layout(st)
         if st.has_loop:
             x, y = lay.local(st, 0, self.gap / 2)
             r = S(16)
@@ -1228,8 +1236,8 @@ class Renderer:
         self.train_boxes.append((body.inflate(S(10), S(10)), train))
 
     def _draw_stations(self, screen) -> None:
-        lay = self.layout
         for st in self.sim.line.stations:
+            lay = self._station_layout(st)
             if st.has_loop:
                 x, y = lay.local(st, 0, self.gap / 2)
                 ui.circle(screen, BG, (x, y), S(15))

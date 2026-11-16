@@ -99,6 +99,26 @@ PT: dict[str, str] = {
     "This is your line, with its stations. Draw again to change it.":
         "Esta é a tua linha, com as estações. Desenha outra vez para a mudar.",
     "Use this line": "Usar esta linha",
+    "Branch line": "Ramal",
+    "A second line that leaves the first one just past one of its crossing stations.":
+        "Uma segunda linha que sai da primeira logo a seguir a uma das suas estações de cruzamento.",
+    "Trains can run from the first station of the line to the end of the branch, and back. "
+    "At the junction you set the points for each train: the driver tells you which way he is going.":
+        "Os comboios podem ir da primeira estação da linha até ao fim do ramal, e voltar. "
+        "Na bifurcação és tu que pões a agulha para cada comboio: o maquinista diz-te para onde vai.",
+    "Add a branch": "Adicionar um ramal",
+    "Remove the branch": "Remover o ramal",
+    "Done": "Feito",
+    "Leaves from": "Sai de",
+    "Distance from there to the first station of the branch": "Distância daí até à primeira estação do ramal",
+    "In the list of trains, click a train's route to send it along the branch. "
+    "The branch ends at its last station and goes on off the map.":
+        "Na lista de comboios, clica no percurso de um comboio para o mandares pelo ramal. "
+        "O ramal acaba na sua última estação e continua para fora do mapa.",
+    "Route": "Percurso",
+    "with a branch": "com ramal",
+    "The branch needs at least one station.": "O ramal precisa de pelo menos uma estação.",
+    "The branch must leave from a crossing station.": "O ramal tem de sair de uma estação de cruzamento.",
     "Clear": "Limpar",
     "Cancel": "Cancelar",
     "Hold the mouse button down and draw the line.": "Carrega no botão do rato e desenha a linha.",
@@ -300,12 +320,17 @@ TRACKS = {
     "the northbound fast track": "via rápida sentido norte",
     "the southbound fast track": "via rápida sentido sul",
     "the Cintura line": "Linha de Cintura",
+    # A line with a branch, made in the level editor.
+    "the main line": "linha principal",
+    "the branch line": "linha do ramal",
 }
 
 
 def track(name: str) -> str:
     if name.startswith("platform "):
         return "linha " + name.split()[1]
+    if name.startswith("track "):
+        return "via " + name.split()[1]
     return TRACKS.get(name, name)
 
 
@@ -343,6 +368,8 @@ PT_PATTERNS: list = [
     (r"(\d+) levels", "{} níveis"),
     (r"(\d+) stations \((\d+) crossing\)", "{} estações ({} de cruzamento)"),
     (r"(\d+) stations, (\d+) km\. Made in the level editor\.", "{} estações, {} km. Feito no editor de níveis."),
+    (r"(\d+) stations, (\d+) km and a branch\. Made in the level editor\.",
+     "{} estações, {} km e um ramal. Feito no editor de níveis."),
     (r"The list is full \((\d+) levels\)\. Delete one to make another\.",
      "A lista está cheia ({} níveis). Apaga um para fazeres outro."),
     (r"Trains: (.+)", lambda trains: f"Comboios: {i18n.t(trains, False)}"),
@@ -420,7 +447,7 @@ PT_PATTERNS: list = [
     (r"Signal (\S+)", "Sinal {}"),
     (r"([^·]+) entry", lambda st: f"entrada {to('de', st)}"),
     (r"([^·]+) track (\d+) exit", lambda st, n: f"saída da via {n} {to('de', st)}"),
-    (r"([^·]+), (the [^·]+|platform \d+)", lambda st, tr: f"{st}, {track(tr)}"),
+    (r"([^·]+), (the [^·]+|platform \d+|track \d+)", lambda st, tr: f"{st}, {track(tr)}"),
     (r"Points (\S+)", "Agulha {}"),
     (r"set to track (\d+)", "para a via {}"),
     (r"set to ([^·]+)", lambda tr: f"para a {track(tr)}"),

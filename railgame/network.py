@@ -81,6 +81,9 @@ class Network:
     east_edge: float
     geo: Geo
     terminus: str | None = None  # station code of the terminus at the west end, if any
+    # True: a driver stops and asks before points that would send the train onto a line from
+    # which it cannot reach its next stop (the junction of a branch line, see junction.py).
+    drivers_refuse_wrong_way: bool = False
 
     def station(self, code: str) -> Station:
         for st in self.stations:

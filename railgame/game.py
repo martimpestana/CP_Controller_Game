@@ -9,6 +9,8 @@ import pygame
 from railgame import i18n, minimap, render, skins
 from railgame.editor import Editor
 from railgame.levels import LEVELS, LINE_BLURBS, LINE_NAMES, build_level
+from railgame.junction import JunctionNetwork
+from railgame.junctionrender import JunctionRenderer
 from railgame.netrender import NetRenderer
 from railgame.netsim import NetSimulation
 from railgame.render import (
@@ -95,7 +97,9 @@ class Game:
                 drawn[self.sim.line.name] = level.map_key()
         else:
             self.info, self.sim = build_level(self.line_key, number)
-        if isinstance(self.sim, NetSimulation):
+        if isinstance(self.sim.line, JunctionNetwork):  # a custom line with a branch
+            self.renderer = JunctionRenderer(self.sim, self.settings.skins)
+        elif isinstance(self.sim, NetSimulation):
             self.renderer = NetRenderer(self.sim, self.settings.skins)
         else:
             self.renderer = Renderer(self.sim, self.settings.skins)
@@ -171,7 +175,7 @@ class Game:
             self.click(event.pos)
             if before == "draw" and self.scene == "draw" and not any(r.collidepoint(event.pos) for r, _ in self.buttons):
                 self.editor.draw_event(event)  # a press on the map starts the line
-        elif self.scene == "editor" and event.type in (pygame.KEYDOWN, pygame.TEXTINPUT):
+        elif self.scene in ("editor", "branch") and event.type in (pygame.KEYDOWN, pygame.TEXTINPUT):
             self.editor.event(event)  # typing a name
         elif self.scene == "draw" and event.type in (pygame.KEYDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
             self.editor.draw_event(event)  # drawing the line by hand
@@ -185,7 +189,7 @@ class Game:
             if key in (pygame.K_ESCAPE, pygame.K_RETURN):
                 self.scene = "menu"
             return
-        if self.scene in ("editor", "draw"):
+        if self.scene in ("editor", "draw", "branch"):
             return  # their keys go to the editor (see handle)
         if self.scene == "menu":
             lines = list(LEVELS)
@@ -220,7 +224,7 @@ class Game:
             if rect.collidepoint(pos):
                 self.do(action)
                 return
-        if self.scene == "editor":
+        if self.scene in ("editor", "branch"):
             self.editor.click(pos)
         if self.scene != "playing":
             return
@@ -305,6 +309,7 @@ class Game:
             "mylevels": self.editor.draw_list,
             "editor": self.editor.draw,
             "draw": self.editor.draw_canvas,
+            "branch": self.editor.draw_branch,
         }
         if self.scene in screens:
             screens[self.scene]()
