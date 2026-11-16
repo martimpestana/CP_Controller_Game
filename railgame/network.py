@@ -115,7 +115,7 @@ NORTH_EDGE = 3200
 
 
 def lisboa_norte() -> Network:
-    """Linha do Norte from Santa Apolónia to Oriente.
+    """The game's "Linha de Lisboa": the Linha do Norte from Santa Apolónia to Oriente.
 
     Santa Apolónia is a terminus with four platforms. Two tracks run north past Braço de
     Prata, where the Linha de Cintura joins, and then four: a slow and a fast track each way,
@@ -188,6 +188,6 @@ def lisboa_norte() -> Network:
         labels={"CN": "Cintura · Sintra", "CS": ""},
     )
     return Network(
-        "Linha do Norte", stations, tracks, points, signals, platforms,
+        "Linha de Lisboa", stations, tracks, points, signals, platforms,  # the name shown in the game
         west_edge=0, east_edge=NORTH_EDGE, geo=geo, terminus="SAP",
     )

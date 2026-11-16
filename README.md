@@ -5,7 +5,7 @@ A railway signalling game on Portuguese lines. You are the controller of a singl
 crossing stations. Drivers send you requests, you set the signals and the points, and you try to keep
 every train on time without letting two of them onto the same track.
 
-The Linha do Norte in Lisbon (Santa Apolónia to Oriente) is different: a double-track main line
+The Linha de Lisboa (the Linha do Norte from Santa Apolónia to Oriente) is different: a double-track main line
 with four platforms at the Santa Apolónia terminus, the Cintura line joining at Braço de Prata,
 and two extra fast tracks to Oriente for the Alfa Pendular and the Intercidades. Here the
 danger is a crossover set the wrong way, or a fast train stuck behind a regional.
@@ -158,7 +158,7 @@ the start.
 | 8 | Harvest season | 8 | 8 min |
 | 9 | Running late (random delays) | 6 | 7 min |
 
-### Linha do Norte (Lisbon)
+### Linha de Lisboa
 
 | Level | Name | Trains | Delay limit |
 | --- | --- | --- | --- |
