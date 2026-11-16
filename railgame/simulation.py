@@ -19,6 +19,7 @@ SIGNAL_MARGIN = 15.0  # trains stop this far before a red signal or a wrong poin
 SPAWN_CLEARANCE = 2500.0  # a new train needs this much free track at the edge of the map
 POINT_LOCK = 40.0  # points cannot move while a moving train is this close to them
 POINT_LOCK_STOPPED = 5.0  # ...or while a train is standing on them (less than SIGNAL_MARGIN)
+GRIDLOCK_SECONDS = 60.0  # the line is called blocked after trains have been stuck for this long
 
 
 @dataclass
@@ -60,6 +61,8 @@ class Simulation:
         self.requests: dict[tuple, Request] = {}
         self.notices: list[Notice] = []  # drivers' messages that need no action, newest last
         self.crash: tuple[Train, Train] | None = None
+        self.gridlock: list[Train] = []  # the trains that can never move again, once the line is blocked
+        self._stuck_for = 0.0
 
     # ------------------------------------------------------------------ player actions
 
@@ -160,11 +163,14 @@ class Simulation:
 
     @property
     def over(self) -> bool:
-        return self.crash is not None or self.finished
+        return self.crash is not None or self.finished or bool(self.gridlock)
 
     @property
     def passed(self) -> bool:
-        return self.finished and self.crash is None and self.average_delay() <= self.max_average_delay
+        return (
+            self.finished and self.crash is None and not self.gridlock
+            and self.average_delay() <= self.max_average_delay
+        )
 
     def average_delay(self) -> float:
         """Average delay in seconds of the trains that have appeared or are already late."""
@@ -191,6 +197,7 @@ class Simulation:
             elif train.state == "running":
                 self._move(train, dt)
         self._check_collisions()
+        self._check_gridlock(dt)
         self._update_requests()
 
     def _announce_delay(self, train: Train) -> None:
@@ -401,6 +408,69 @@ class Simulation:
             if station is not None and abs((low + high) / 2 - station.pos) < POINT_OFFSET:
                 return False  # side by side on different platform tracks
         return True
+
+    # ------------------------------------------------------------------ a blocked line
+
+    def stuck_trains(self) -> list[Train]:
+        """The trains that can never move again, whatever the controller does.
+
+        On a single track a train cannot go back. So a train standing in a station is stuck
+        when the line ahead of it holds a stuck train (coming towards it, or stopped in front
+        of it), and a train on the line is stuck when the station ahead has both tracks taken
+        by stuck trains. Everything starts as "stuck"; a train is cleared as soon as its way
+        ahead is free or only held by trains that have been cleared themselves (they will move
+        on). Whoever is left is waiting for each other in a circle: the line is blocked.
+        """
+        loops = sorted((st for st in self.line.stations if st.has_loop), key=lambda st: st.pos)
+        if not loops:
+            return []
+        # Where each train is: ("station", i) or ("line", i) for the stretch after station i
+        # (-1: before the first station), and for a train on the line the station it runs to.
+        where: dict[int, tuple[str, int]] = {}
+        for train in self.running_trains:
+            inside = next((i for i, st in enumerate(loops) if abs(train.pos - st.pos) <= POINT_OFFSET), None)
+            if inside is not None:
+                where[id(train)] = ("station", inside)
+            else:
+                where[id(train)] = ("line", sum(1 for st in loops if st.pos < train.pos) - 1)
+        stuck = list(self.running_trains)
+
+        def on_stretch(i: int) -> list[Train]:
+            return [t for t in stuck if where[id(t)] == ("line", i)]
+
+        def blocked(train: Train) -> bool:
+            kind, i = where[id(train)]
+            if kind == "station":
+                stretch = i if train.direction == EAST else i - 1
+                return any(t is not train for t in on_stretch(stretch))
+            target = i + 1 if train.direction == EAST else i
+            if not 0 <= target < len(loops):
+                return False  # on its way off the map
+            return sum(1 for t in stuck if where[id(t)] == ("station", target)) >= 2
+
+        changed = True
+        while changed:
+            changed = False
+            for train in list(stuck):
+                if not blocked(train):
+                    stuck.remove(train)
+                    changed = True
+        return stuck
+
+    def _check_gridlock(self, dt: float) -> None:
+        """End the level when trains are stuck for good (see stuck_trains), instead of leaving
+        the controller in front of a line where nothing can ever move again."""
+        running = self.running_trains
+        if self.crash or not running or any(t.speed > 0 for t in running):
+            self._stuck_for = 0.0
+            return
+        stuck = self.stuck_trains()
+        if not stuck:
+            self._stuck_for = 0.0
+            return
+        self._stuck_for += dt
+        if self._stuck_for >= GRIDLOCK_SECONDS:
+            self.gridlock = stuck
 
     # ------------------------------------------------------------------ drivers' requests
 

@@ -434,3 +434,48 @@ def test_a_late_train_says_so_only_shortly_before_it_was_due():
     assert [n.train for n in sim.notices] == [late]
     assert f"{round(late.brought_delay / 60)} min late" in sim.notices[0].text
     assert all(t.announced for t in sim.trains if not t.brought_delay)  # trains on time say nothing
+
+
+# ---------------------------------------------------------------------- a blocked line
+
+
+def blocked_sim():
+    """Olhão with both tracks taken by trains that want to leave in opposite directions, and
+    a train waiting outside at each end: nobody can ever move again."""
+    line = algarve_faro_tavira()
+    olhao = line.station("OLH")
+    plans = [("R 1", EAST), ("R 2", WEST), ("R 3", EAST), ("R 4", WEST)]
+    trains = [make_timetable(line, TrainPlan(name, d, "08:00")) for name, d in plans]
+    places = [(olhao.pos + 75, 1), (olhao.pos - 75, 2), (olhao.pos - 915, 1), (olhao.pos + 915, 1)]
+    for train, (pos, track) in zip(trains, places):
+        train.state, train.pos, train.track, train.speed = "running", pos, track, 0.0
+    return Simulation(line, trains, clock("08:00"), 180), trains
+
+
+def test_a_line_where_nobody_can_ever_move_ends_the_level():
+    sim, trains = blocked_sim()
+    assert sim.stuck_trains() == trains
+    sim.advance(30)
+    assert not sim.over  # not at once: the controller sees it happen first
+    sim.advance(60)
+    assert sim.over and sim.gridlock == trains and not sim.passed and sim.crash is None
+
+
+def test_trains_that_are_only_waiting_for_the_controller_are_not_stuck():
+    # The same station, full, but nobody waiting outside: both trains can still leave.
+    sim, trains = blocked_sim()
+    for train in trains[2:]:
+        train.state = "finished"
+    assert sim.stuck_trains() == []
+    sim.advance(600)
+    assert not sim.gridlock
+    # One track taken and a train waiting outside at each end: one of them can still come in.
+    sim, trains = blocked_sim()
+    trains[1].state = "finished"
+    assert sim.stuck_trains() == []
+    # Two trains following each other towards a full station are stuck behind it too...
+    sim, trains = blocked_sim()
+    assert set(map(id, sim.stuck_trains())) == set(map(id, trains))
+    # ...but not when the train at the front of the queue can still get away.
+    trains[3].state = "finished"  # nobody outside to the east: R 1 can leave, then R 3 comes in
+    assert sim.stuck_trains() == []

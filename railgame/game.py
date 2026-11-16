@@ -7,6 +7,7 @@ from pathlib import Path
 import pygame
 
 from railgame import i18n, minimap, render, skins
+from railgame.editor import Editor
 from railgame.levels import LEVELS, LINE_BLURBS, LINE_NAMES, build_level
 from railgame.netrender import NetRenderer
 from railgame.netsim import NetSimulation
@@ -58,14 +59,23 @@ class Game:
         self.settings = Settings.load()
         i18n.set_language(self.settings.language)
         self.customise_kind = skins.TRAIN_TYPES[0]  # the tab open in the Customise menu
+        self.editor = Editor(self)  # "My levels": the player's own levels (editor.py)
+        self.custom_back = "mylevels"  # where Esc goes from a custom level: the list or the editor
         render.apply_theme(THEMES[self.settings.theme])
 
     # ------------------------------------------------------------------ levels
 
     @property
     def levels(self):
-        """The levels of the line chosen in the menu."""
+        """The levels of the line chosen in the menu (or the player's own levels)."""
+        if self.line_key == "custom":
+            return [level.info(i) for i, level in enumerate(self.editor.levels, 1)]
         return LEVELS[self.line_key]
+
+    def line_name(self, line_key: str, number: int) -> str:
+        if line_key == "custom":
+            return self.editor.levels[number - 1].title
+        return LINE_NAMES[line_key]
 
     def choose_line(self, line_key: str) -> None:
         self.line_key = line_key
@@ -75,7 +85,16 @@ class Game:
         if line_key is not None:
             self.line_key = line_key
         self.level_number = number
-        self.info, self.sim = build_level(self.line_key, number)
+        if self.line_key == "custom":
+            level = self.editor.levels[number - 1]
+            self.info, self.sim = level.build(number)
+            # The map is kept by the line's name: forget it if the line has changed since.
+            drawn = self.__dict__.setdefault("_custom_maps", {})
+            if drawn.get(self.sim.line.name) != level.map_key():
+                render.forget_map(self.sim.line.name)
+                drawn[self.sim.line.name] = level.map_key()
+        else:
+            self.info, self.sim = build_level(self.line_key, number)
         if isinstance(self.sim, NetSimulation):
             self.renderer = NetRenderer(self.sim, self.settings.skins)
         else:
@@ -90,12 +109,28 @@ class Game:
         """Start a level from the menus. A map that has not been drawn yet can take a moment
         (the Douro especially, in the browser), so a "Loading" screen is shown first."""
         line_key = line_key or self.line_key
-        if render.map_is_ready(LINE_NAMES[line_key]):
+        ready = render.map_is_ready(self.line_name(line_key, number))
+        if line_key == "custom":  # ...and still the map of the line as it is now
+            level = self.editor.levels[number - 1]
+            ready = ready and self.__dict__.get("_custom_maps", {}).get(level.title) == level.map_key()
+        if ready:
             self.start_level(number, line_key)
         else:
             self.pending_level = (number, line_key)
             self.loading_shown = False
             self.scene = "loading"
+
+    def play_custom(self, index: int, back_to: str) -> None:
+        """Play one of the player's own levels (from the list, or from the editor to try it)."""
+        self.custom_back = back_to
+        self.open_level(index + 1, "custom")
+
+    def to_levels(self) -> None:
+        """Out of a level, back to where it was chosen."""
+        self.scene = self.custom_back if self.line_key == "custom" else "levels"
+
+    def has_next(self) -> bool:
+        return self.line_key != "custom" and self.level_number < len(self.levels)
 
     def show_toast(self, text: str) -> None:
         self.toast = text
@@ -133,16 +168,20 @@ class Game:
             self.running = False
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self.click(event.pos)
+        elif self.scene == "editor" and event.type in (pygame.KEYDOWN, pygame.TEXTINPUT):
+            self.editor.event(event)  # typing a name
         elif event.type == pygame.KEYDOWN:
             self.key(event.key)
 
     def key(self, key) -> None:
         if self.scene == "loading":
             return
-        if self.scene == "customise":
+        if self.scene in ("customise", "mylevels"):
             if key in (pygame.K_ESCAPE, pygame.K_RETURN):
                 self.scene = "menu"
             return
+        if self.scene == "editor":
+            return  # its keys go to the editor (see handle)
         if self.scene == "menu":
             lines = list(LEVELS)
             if key == pygame.K_ESCAPE and not IN_BROWSER:  # in the browser it would freeze the page
@@ -157,7 +196,7 @@ class Game:
                 self.open_level(key - pygame.K_0)
             return
         if key == pygame.K_ESCAPE:
-            self.scene = "levels"
+            self.to_levels()
         elif key == pygame.K_r:
             self.start_level(self.level_number)
         elif self.scene == "playing":
@@ -176,6 +215,8 @@ class Game:
             if rect.collidepoint(pos):
                 self.do(action)
                 return
+        if self.scene == "editor":
+            self.editor.click(pos)
         if self.scene != "playing":
             return
         speed = self.renderer.speed_button_at(pos)
@@ -222,7 +263,11 @@ class Game:
         elif action == "menu":
             self.scene = "menu"
         elif action == "levels":
-            self.scene = "levels"
+            self.to_levels()
+        elif action == "mylevels":
+            self.scene = "mylevels"
+        elif action.startswith("ed:"):
+            self.editor.do(action)
         elif action == "customise":
             self.scene = "customise"
         elif action.startswith("tab:"):
@@ -239,7 +284,7 @@ class Game:
             self.running = False
 
     def next_or_retry(self) -> None:
-        if self.sim.passed and self.level_number < len(self.levels):
+        if self.sim.passed and self.has_next():
             self.do("next")
         else:
             self.do("retry")
@@ -248,8 +293,15 @@ class Game:
 
     def draw(self) -> None:
         self.buttons = []
-        if self.scene in ("menu", "levels", "customise"):
-            {"menu": self.draw_menu, "levels": self.draw_levels, "customise": self.draw_customise}[self.scene]()
+        screens = {
+            "menu": self.draw_menu,
+            "levels": self.draw_levels,
+            "customise": self.draw_customise,
+            "mylevels": self.editor.draw_list,
+            "editor": self.editor.draw,
+        }
+        if self.scene in screens:
+            screens[self.scene]()
             # The language button, top right (in a level it is in the top bar).
             self.buttons.append((render.draw_language_button(self.screen, self.f_head_small), "language"))
             return
@@ -322,6 +374,7 @@ class Game:
                 y += 24
             y += 24
         # Under "How it works", so the list of lines has the whole left column.
+        self.button(SR(help_x, HEIGHT - 124, 320, 44), "Level editor", "mylevels", primary=True)
         self.button(SR(help_x, HEIGHT - 70, 180, 44), "Customise", "customise")
         if not IN_BROWSER:  # a web page is closed with the browser tab instead
             self.button(SR(help_x + 200, HEIGHT - 70, 120, 44), "Quit", "quit")
@@ -458,7 +511,7 @@ class Game:
         number, line_key = self.pending_level
         title = self.f_title.render("Loading…", True, WHITE)
         s.blit(title, title.get_rect(center=(S(WIDTH // 2), S(HEIGHT // 2 - 30))))
-        what = f"Drawing the map of the {LINE_NAMES[line_key]} for level {number}"
+        what = f"Drawing the map of the {self.line_name(line_key, number)} for level {number}"
         text = self.f_text.render(what, True, MUTED)
         s.blit(text, text.get_rect(center=(S(WIDTH // 2), S(HEIGHT // 2 + 20))))
         self.loading_shown = True
@@ -478,6 +531,14 @@ class Game:
             a, b = sim.crash
             title, colour = "Accident!", RED
             detail = f"{a.name} and {b.name} collided. Never let two trains onto the same track."
+        elif getattr(sim, "gridlock", None):
+            title, colour = "Line blocked", RED
+            stuck = sim.gridlock
+            names = ", ".join(t.name for t in stuck) if len(stuck) <= 3 else f"{len(stuck)} trains"
+            detail = (
+                f"{names} can never move again: each one is waiting for another. "
+                "Keep a track free at every station for trains coming the other way."
+            )
         elif sim.passed:
             title, colour = "Level complete", GREEN
             detail = f"Average delay {minutes_text(sim.average_delay())}. Well done, controller."
@@ -520,7 +581,7 @@ class Game:
             y += S(22)
 
         y = box.bottom - S(70)
-        if sim.passed and self.level_number < len(self.levels):
+        if sim.passed and self.has_next():
             self.button(pygame.Rect(box.x + S(30), y, S(150), S(44)), "Levels", "levels")
             self.button(pygame.Rect(box.x + S(200), y, S(150), S(44)), "Replay", "retry")
             self.button(pygame.Rect(box.x + S(370), y, S(160), S(44)), "Next level", "next", primary=True)

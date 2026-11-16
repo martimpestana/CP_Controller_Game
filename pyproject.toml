@@ -1,7 +1,7 @@
 [project]
 name = "cp-controller-game"
 version = "0.1.0"
-description = "Railway signalling game: keep the trains on the Algarve line running on time."
+description = "Railway signalling game: keep the trains on Portuguese lines running on time."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
