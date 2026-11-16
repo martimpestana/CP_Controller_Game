@@ -36,6 +36,12 @@ class Editor:
         self.message = ""  # "Saved", or why it could not be
         self.message_until = 0
         self.confirm_delete: int | None = None  # the level whose "Delete" was clicked once
+        # Drawing the line by hand (the "draw" screen):
+        self.stroke: list[tuple[float, float]] = []  # what the mouse has drawn, 0..1 across the canvas
+        self.drawing = False  # the mouse button is down on the canvas
+        self.drawn: list[tuple[float, float]] = []  # the stroke tidied into a line, when it can be one
+        self.draw_note = ""  # why the stroke cannot be a line
+        self.canvas = pygame.Rect(0, 0, 1, 1)
 
     # ------------------------------------------------------------------ opening and saving
 
@@ -110,7 +116,19 @@ class Editor:
         elif what == "close":
             self.game.scene = "mylevels"
         elif what == "shape":
-            level.shape = _step(list(custom.SHAPES), level.shape, args[0])
+            shapes = list(custom.SHAPES) + ([custom.DRAWN] if level.path else [])
+            level.shape = _step(shapes, level.shape, args[0])
+        elif what == "draw":  # open the drawing screen, with the line drawn before (if any)
+            self.stroke, self.drawn, self.draw_note, self.drawing = [], list(level.path), "", False
+            self.game.scene = "draw"
+        elif what == "drawclear":
+            self.stroke, self.drawn, self.draw_note = [], [], ""
+        elif what == "drawuse":
+            if self.drawn:
+                level.path, level.shape = list(self.drawn), custom.DRAWN
+            self.game.scene = "editor"
+        elif what == "drawcancel":
+            self.game.scene = "editor"
         elif what == "landscape":
             level.landscape = _step(list(custom.LANDSCAPES), level.landscape, args[0])
         elif what == "limit":
@@ -200,6 +218,93 @@ class Editor:
             self.focus = keys[(keys.index(self.focus) + 1) % len(keys)] if self.focus in keys else None
         return True
 
+    # ------------------------------------------------------------------ drawing the line by hand
+
+    def _canvas_point(self, pos) -> tuple[float, float]:
+        c = self.canvas
+        return (min(1.0, max(0.0, (pos[0] - c.x) / c.width)), min(1.0, max(0.0, (pos[1] - c.y) / c.height)))
+
+    def draw_event(self, event) -> None:
+        """The mouse on the drawing screen: press on the map, drag, let go."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.game.scene = "editor"
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and self.drawn:
+                self.do("ed:drawuse")
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.canvas.collidepoint(event.pos):  # a new stroke replaces the last one
+                self.stroke, self.drawn, self.draw_note, self.drawing = [self._canvas_point(event.pos)], [], "", True
+        elif event.type == pygame.MOUSEMOTION and self.drawing:
+            point = self._canvas_point(event.pos)
+            if abs(point[0] - self.stroke[-1][0]) + abs(point[1] - self.stroke[-1][1]) > 0.004:
+                self.stroke.append(point)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.drawing:
+            self.drawing = False
+            self.drawn, self.draw_note = custom.tidy_path(self.stroke)
+            if self.drawn:
+                self.stroke = []
+
+    def draw_canvas(self) -> None:
+        """The drawing screen: a blank map to draw the line on, from its first station to its last."""
+        g, s, level = self.game, self.game.screen, self.level
+        s.fill(render.BG)
+        mouse = pygame.mouse.get_pos()
+        s.blit(g.f_head.render("Draw the line", True, WHITE), (S(LEFT), S(20)))
+        hint = "Hold the mouse button down and draw the line across the map, from the first station to the last."
+        s.blit(g.f_small.render(hint, True, MUTED), (S(LEFT + 200), S(25)))
+        self.canvas = c = SR(LEFT, 60, 900, 580)
+        pygame.draw.rect(s, render.LAND, c, border_radius=S(10))
+        for i in range(1, 9):  # a faint grid, to help judge distances
+            x = c.x + c.width * i // 9
+            pygame.draw.line(s, render.CARD, (x, c.y + S(6)), (x, c.bottom - S(6)), 1)
+        for i in range(1, 6):
+            y = c.y + c.height * i // 6
+            pygame.draw.line(s, render.CARD, (c.x + S(6), y), (c.right - S(6), y), 1)
+
+        def px(p):
+            return (c.x + p[0] * c.width, c.y + p[1] * c.height)
+
+        if len(self.stroke) > 1:  # being drawn, or drawn but not usable
+            thick_lines(s, RED if self.draw_note else WHITE, [px(p) for p in self.stroke], S(3))
+        if self.drawn:
+            self._sketch([px(p) for p in self.drawn], render.LAND)
+        elif not self.stroke:
+            text = g.f_text.render("Draw here", True, MUTED)
+            s.blit(text, text.get_rect(center=c.center))
+
+        x = LEFT + 920
+        if self.draw_note:
+            for i, line in enumerate(g.renderer_wrap(self.draw_note, S(WIDTH - x - 30))):
+                s.blit(g.f_text.render(line, True, RED), (S(x), S(70 + i * 24)))
+        elif self.drawn:
+            for i, line in enumerate(g.renderer_wrap("This is your line, with its stations. Draw again to change it.", S(WIDTH - x - 30))):
+                s.blit(g.f_text.render(line, True, TEXT), (S(x), S(70 + i * 24)))
+        legend = g.f_small.render("○ " + i18n.t("Crossing") + "   • " + i18n.t("Halt"), True, MUTED)
+        s.blit(legend, (S(x), S(190)))
+        if self.drawn:
+            g.button(SR(x, HEIGHT - 240, 280, 44), "Use this line", "ed:drawuse", primary=True)
+        if self.drawn or self.stroke:
+            g.button(SR(x, HEIGHT - 186, 280, 44), "Clear", "ed:drawclear")
+        g.button(SR(x, HEIGHT - 132, 280, 44), "Cancel", "ed:drawcancel")
+
+    def _sketch(self, path: list[tuple[float, float]], behind) -> None:
+        """The track along a path in screen pixels, with the level's stations marked on it:
+        rings for crossing stations, dots for halts, each with its number from the list."""
+        g, s, level = self.game, self.game.screen, self.level
+        thick_lines(s, render.TRACK, path, S(3))
+        total = level.length_km() + 2 * custom.EDGE_KM
+        km = custom.EDGE_KM
+        for i, st in enumerate(level.stations):
+            x, y = path[round(km / total * (len(path) - 1))]
+            if st.crossing:
+                circle(s, WHITE, (x, y), S(7))
+                circle(s, behind, (x, y), S(4))
+            else:
+                circle(s, WHITE, (x, y), S(4))
+            number = g.f_small.render(str(i + 1), True, TEXT if st.crossing else MUTED)
+            s.blit(number, number.get_rect(center=(x, y - S(18))))
+            km += st.gap_km
+
     # ------------------------------------------------------------------ drawing: the list
 
     def draw_list(self) -> None:
@@ -257,7 +362,7 @@ class Editor:
         km = g.f_small.render(f"{level.length_km():.0f} km", True, MUTED)
         s.blit(km, (S(LEFT + 110), S(y + 5)))
         y += 34
-        self._chooser(LEFT, y, 290, "Shape", custom.SHAPES[level.shape][0], "ed:shape", mouse)
+        self._chooser(LEFT, y, 290, "Shape", level.shape_name(), "ed:shape", mouse)
         self._chooser(LEFT + 310, y, 290, "Landscape", custom.LANDSCAPES[level.landscape][0], "ed:landscape", mouse)
         y += 48
         for x, label in ((LEFT + 30, "Station"), (LEFT + 262, "Type"), (LEFT + 392, "Distance to the next")):
@@ -375,11 +480,11 @@ class Editor:
         pygame.draw.rect(s, render.CARD, box, border_radius=S(10))
         if len(level.stations) < 2:
             return
-        curve = custom.SHAPES[level.shape][1]
-        raw = [curve(i / 60) for i in range(61)]
+        raw = level.shape_points(61)
         xs, ys = [p[0] for p in raw], [p[1] for p in raw]
-        w, h = max(xs) - min(xs), max(max(ys) - min(ys), 1e-6)
+        w, h = max(max(xs) - min(xs), 1e-6), max(max(ys) - min(ys), 1e-6)
         inner = box.inflate(-S(70), -S(64))
+        inner.width -= S(150)  # room for the "Draw by hand" button on the right
         # Fill the box: the sketch only has to show the bends, not the true proportions.
         kx, ky = inner.width / w, inner.height / h
         kx, ky = min(kx, ky * 6), min(ky, kx * 2)
@@ -390,21 +495,13 @@ class Editor:
         if water != "none":
             shore = [(x, y + S(15 if water == "sea" else 9)) for x, y in path]
             thick_lines(s, render.SEA, shore, S(12 if water == "sea" else 6))
-        thick_lines(s, render.TRACK, path, S(3))
-        total = level.length_km() + 2 * custom.EDGE_KM
-        km = custom.EDGE_KM
-        for i, st in enumerate(level.stations):
-            x, y = path[round(km / total * 60)]
-            if st.crossing:
-                circle(s, WHITE, (x, y), S(7))
-                circle(s, render.CARD, (x, y), S(4))
-            else:
-                circle(s, WHITE, (x, y), S(4))
-            number = g.f_small.render(str(i + 1), True, TEXT if st.crossing else MUTED)
-            s.blit(number, number.get_rect(center=(x, y - S(18))))
-            km += st.gap_km
+        self._sketch(path, render.CARD)
         legend = g.f_small.render("○ " + i18n.t("Crossing") + "   • " + i18n.t("Halt"), True, MUTED)
         s.blit(legend, (box.x + S(12), box.bottom - S(24)))
+        self._button(
+            pygame.Rect(box.right - S(162), box.y + S(10), S(150), S(34)), "Draw by hand", "ed:draw",
+            pygame.mouse.get_pos(), on=level.shape == custom.DRAWN,
+        )
 
 
 def _step(options: list, value, by: int):

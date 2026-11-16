@@ -197,9 +197,11 @@ says "delayed 3 min". Only the delay you add is counted, not the lateness a trai
 **Level editor** in the main menu opens **My levels**. A level of your own is a single-track
 line that you lay out, and the trains that run on it:
 
-- **The line.** Its shape on the map (gentle curve, straight, big bend, S-curve, south to
-  north) and its landscape (coast, plain, river valley, or a simple map). Two to seven stations:
-  for each one its name (click it and type), whether it is a crossing station (two tracks) or a
+- **The line.** Its shape on the map: one of the ready-made shapes (gentle curve, straight,
+  big bend, S-curve, south to north) or your own, drawn with the mouse (**Draw by hand**: hold
+  the button down and draw the line across the blank map; a line that crosses itself or bends
+  too sharply for a train is refused, with the reason). Its landscape (coast, plain, river valley, or a simple map). Two to seven
+  stations: for each one its name (click it and type), whether it is a crossing station (two tracks) or a
   halt, and the distance to the next station (3 to 30 km).
 - **The trains.** Up to twelve. For each one the kind (Regional, Inter-Regional, Intercidades,
   Alfa Pendular, freight, steam), which end of the line it comes from, and the time it enters

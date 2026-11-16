@@ -56,6 +56,88 @@ LANDSCAPES = {
 }
 
 SHAPE_POINTS = 41
+DRAWN = "drawn"  # CustomLevel.shape when the player drew the line by hand (CustomLevel.path)
+DRAWN_NAME = "Drawn by hand"
+MIN_DRAWN_LENGTH = 0.5  # a drawn line must be at least this long (the drawing area is 1 wide)
+
+
+def _resample(points: list[tuple[float, float]], count: int) -> list[tuple[float, float]]:
+    """The same polyline as `count` points spaced evenly along it."""
+    cum = [0.0]
+    for a, b in zip(points, points[1:]):
+        cum.append(cum[-1] + math.dist(a, b))
+    total = cum[-1]
+    if total <= 0:
+        return [points[0]] * count
+    out, j = [], 0
+    for i in range(count):
+        d = total * i / (count - 1)
+        while j < len(points) - 2 and cum[j + 1] < d:
+            j += 1
+        seg = cum[j + 1] - cum[j]
+        t = 0.0 if seg <= 0 else (d - cum[j]) / seg
+        (ax, ay), (bx, by) = points[j], points[j + 1]
+        out.append((ax + (bx - ax) * t, ay + (by - ay) * t))
+    return out
+
+
+def _crosses_itself(points: list[tuple[float, float]]) -> bool:
+    def side(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    segments = list(zip(points, points[1:]))
+    for i, (a, b) in enumerate(segments):
+        for c, d in segments[i + 2 :]:
+            if side(a, b, c) * side(a, b, d) < 0 and side(c, d, a) * side(c, d, b) < 0:
+                return True
+    return False
+
+
+def _path_problem(path: list[tuple[float, float]]) -> str:
+    """Why this path cannot be a railway line ("" when it can)."""
+    length = sum(math.dist(a, b) for a, b in zip(path, path[1:]))
+    if length < MIN_DRAWN_LENGTH:
+        return "The line is too short. Draw it across the map."
+    if _crosses_itself(path):
+        return "The line cannot cross itself."
+    # No hairpins: the station areas must have room to lie along the line.
+    for i in range(2, len(path) - 2):
+        (ax, ay), (bx, by), (cx, cy) = path[i - 2], path[i], path[i + 2]
+        if (bx - ax) * (cx - bx) + (by - ay) * (cy - by) < 0:
+            return "That bend is too sharp for a train. Draw wider curves."
+    return ""
+
+
+def tidy_path(points) -> tuple[list[tuple[float, float]], str]:
+    """Turn what the mouse drew into a line the map can use: (path, "") or ([], why not).
+
+    Points are (x, y) with x to the right and y DOWN, both from 0 to 1 across the drawing
+    area. The path comes back smoothed (a shaky hand must not put kinks in the track), as
+    SHAPE_POINTS evenly spaced points, running left to right (or bottom to top for a line
+    that is taller than it is wide), like the ready-made shapes.
+    """
+    pts = [(min(1.0, max(0.0, float(x))), min(1.0, max(0.0, float(y)))) for x, y in points]
+    pts = [p for i, p in enumerate(pts) if i == 0 or math.dist(p, pts[i - 1]) > 1e-4]
+    if len(pts) < 2:
+        return [], "Hold the mouse button down and draw the line."
+    if len(pts) == SHAPE_POINTS and not _path_problem(pts):
+        path = pts  # already tidied (read back from the file): keep it exactly as it is
+    else:
+        path = _resample(pts, SHAPE_POINTS)
+        for _ in range(3):  # smooth, keeping both ends where they were drawn
+            path = [path[0]] + [
+                tuple((a + 2 * b + c) / 4 for a, b, c in zip(path[i - 1], path[i], path[i + 1]))
+                for i in range(1, len(path) - 1)
+            ] + [path[-1]]
+        path = _resample(path, SHAPE_POINTS)
+    why = _path_problem(path)
+    if why:
+        return [], why
+    width = max(p[0] for p in path) - min(p[0] for p in path)
+    height = max(p[1] for p in path) - min(p[1] for p in path)
+    if (path[-1][0] < path[0][0]) if width >= height else (path[-1][1] > path[0][1]):
+        path.reverse()
+    return [(round(x, 4), round(y, 4)) for x, y in path], ""
 
 
 @dataclass
@@ -78,6 +160,7 @@ class CustomLevel:
     shape: str = "coast"
     landscape: str = "coast"
     limit_min: int = 4
+    path: list[tuple[float, float]] = field(default_factory=list)  # the line drawn by hand (see tidy_path)
     stations: list[CustomStation] = field(default_factory=list)
     trains: list[CustomTrain] = field(default_factory=list)
 
@@ -128,6 +211,22 @@ class CustomLevel:
             codes.append(code)
         return codes
 
+    def shape_name(self) -> str:
+        return DRAWN_NAME if self.shape == DRAWN else SHAPES[self.shape][0]
+
+    def shape_points(self, count: int = SHAPE_POINTS) -> list[tuple[float, float]]:
+        """The line from its first end to its last, as (x, y) with x to the right and y up."""
+        if self.shape == DRAWN and len(self.path) >= 2:
+            return [(x, 1.0 - y) for x, y in _resample(list(self.path), count)]
+        curve = SHAPES.get(self.shape, SHAPES["coast"])[1]
+        return [curve(i / (count - 1)) for i in range(count)]
+
+    def tall(self) -> bool:
+        """Does the line run up the map more than across it? (Then the sea is on the left.)"""
+        pts = self.shape_points()
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        return max(ys) - min(ys) > max(xs) - min(xs)
+
     def length_km(self) -> float:
         return sum(st.gap_km for st in self.stations[:-1])
 
@@ -142,12 +241,8 @@ class CustomLevel:
         last = stations[-1].pos
         west, east = -EDGE_KM * 1000, last + EDGE_KM * 1000
         _, water, scenery, water_label = LANDSCAPES.get(self.landscape, LANDSCAPES["simple"])
-        curve = SHAPES.get(self.shape, SHAPES["coast"])[1]
         # Imaginary coordinates somewhere in Portugal: only the shape is used.
-        shape = []
-        for i in range(SHAPE_POINTS):
-            x, y = curve(i / (SHAPE_POINTS - 1))
-            shape.append((38.0 + y * 0.5, -8.5 + x * 0.64))
+        shape = [(38.0 + y * 0.5, -8.5 + x * 0.64) for x, y in self.shape_points()]
         # Each crossing station sits on its own point of the shape, in order along the line.
         index, used = {}, 0
         loops = [st for st in stations if st.has_loop]
@@ -163,7 +258,7 @@ class CustomLevel:
             end_label="",
             water=water,
             water_side=-1,
-            water_edge="left" if self.shape == "north" else "bottom",
+            water_edge="left" if self.tall() else "bottom",
             water_label=water_label,
             scenery=scenery,
             towns=towns,
@@ -172,7 +267,7 @@ class CustomLevel:
 
     def map_key(self) -> str:
         """Everything the drawn map depends on (the trains and the times do not change it)."""
-        return json.dumps([self.title, self.shape, self.landscape, [asdict(st) for st in self.stations]])
+        return json.dumps([self.title, self.shape, self.path, self.landscape, [asdict(st) for st in self.stations]])
 
     def plans(self) -> list[TrainPlan]:
         """The trains in the order they enter, each with a number of its own."""
@@ -213,6 +308,16 @@ class CustomLevel:
         level = cls()
         level.title = _text(data.get("title"), TITLE_LENGTH) or "My level"
         level.shape = data.get("shape") if data.get("shape") in SHAPES else "coast"
+        if data.get("shape") == DRAWN:  # only with a path that still makes a proper line
+            try:
+                raw = data.get("path")
+                pairs = [(float(x), float(y)) for x, y in raw[:500]] if isinstance(raw, list) else []
+            except (TypeError, ValueError):
+                pairs = []
+            if all(math.isfinite(v) for pair in pairs for v in pair):
+                level.path, why = tidy_path(pairs)
+                if not why:
+                    level.shape = DRAWN
         level.landscape = data.get("landscape") if data.get("landscape") in LANDSCAPES else "coast"
         level.limit_min = _number(data.get("limit_min"), MIN_LIMIT, MAX_LIMIT, 4)
         for st in _dicts(data.get("stations"))[:MAX_STATIONS]:

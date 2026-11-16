@@ -1,6 +1,7 @@
 """The level editor ("My levels"): making a level, saving it and playing it."""
 
 import json
+import math
 import os
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -269,3 +270,89 @@ def test_the_editor_is_in_portuguese_too():
         assert CustomLevel.starter(2).title == "O meu nível 2"
     finally:
         i18n.set_language("en")
+
+
+# ---------------------------------------------------------------------- drawing the line by hand
+
+
+def stroke(game: Game, points) -> None:
+    """Press on the drawing map, drag through the points (0..1 across it) and let go."""
+    c = game.editor.canvas
+    pixels = [(c.x + x * c.width, c.y + y * c.height) for x, y in points]
+    game.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pixels[0], button=1))
+    for p in pixels[1:]:
+        game.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=p, rel=(0, 0), buttons=(1, 0, 0)))
+    game.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pixels[-1], button=1))
+
+
+WAVE = [(0.08 + 0.84 * i / 60, 0.55 + 0.28 * math.sin(i / 60 * 2.2 * math.pi)) for i in range(61)]
+
+
+def test_a_line_drawn_by_hand_becomes_the_shape_of_the_level():
+    game = new_game()
+    click(game, "mylevels")
+    click(game, "ed:new")
+    click(game, "ed:draw")
+    assert game.scene == "draw"
+    game.draw()
+    stroke(game, WAVE)
+    assert len(game.editor.drawn) == custom.SHAPE_POINTS and game.editor.draw_note == ""
+    click(game, "ed:drawuse")
+    level = game.editor.level
+    assert game.scene == "editor" and level.shape == custom.DRAWN and level.shape_name() == "Drawn by hand"
+    # The map follows the drawing: down first, then up over the top, as it was drawn.
+    line = level.line()
+    layout = Layout(line, (40, 100, 820, 560))
+    ys = [layout.point(line.west_edge + (line.east_edge - line.west_edge) * t)[1] for t in (0.0, 0.25, 0.7)]
+    assert ys[1] > ys[0] and ys[2] < ys[0]
+    click(game, "ed:test")  # it is saved with the level and can be played
+    for _ in range(3):
+        game.frame()
+    assert game.scene == "playing"
+    assert custom.load_levels()[0] == level and custom.load_levels()[0].path == level.path
+    # The ready-made shapes are still there, and the drawing is kept beside them.
+    game.key(pygame.K_ESCAPE)
+    click(game, "ed:shape:1")
+    assert game.editor.level.shape in custom.SHAPES and game.editor.level.path
+    click(game, "ed:shape:-1")
+    assert game.editor.level.shape == custom.DRAWN
+
+
+def test_a_drawing_that_cannot_be_a_railway_is_refused_with_the_reason():
+    game = new_game()
+    game.editor.new_level()
+    game.editor.do("ed:draw")
+    game.draw()
+    for points, why in [
+        ([(0.1, 0.5), (0.2, 0.5)], "too short"),
+        ([(0.1, 0.1), (0.9, 0.9), (0.9, 0.1), (0.1, 0.9)], "cross itself"),
+        ([(0.1, 0.5), (0.9, 0.5), (0.1, 0.52)], "too sharp"),
+    ]:
+        stroke(game, points)
+        assert game.editor.drawn == [] and why in game.editor.draw_note
+        game.draw()
+        assert "ed:drawuse" not in {action for _, action in game.buttons}
+    press(game, pygame.K_ESCAPE)  # leaves without changing the level
+    assert game.scene == "editor" and game.editor.level.shape == "coast" and game.editor.level.path == []
+
+
+def test_a_drawn_line_runs_left_to_right_or_bottom_to_top():
+    path, why = custom.tidy_path([(0.9, 0.3), (0.5, 0.6), (0.1, 0.4)])  # drawn right to left
+    assert why == "" and path[0][0] < path[-1][0]
+    path, why = custom.tidy_path([(0.5, 0.1), (0.55, 0.5), (0.45, 0.9)])  # drawn top to bottom
+    assert why == "" and path[0][1] > path[-1][1]
+    level = CustomLevel.starter()
+    level.shape, level.path = custom.DRAWN, path
+    assert level.tall() and level.line().geo.water_edge == "left"
+    assert custom.tidy_path(path) == (path, "")  # tidying twice changes nothing
+
+
+def test_a_bad_path_in_the_file_falls_back_to_a_ready_made_shape():
+    good = CustomLevel.starter()
+    good.shape, good.path = custom.DRAWN, custom.tidy_path(WAVE)[0]
+    assert CustomLevel.from_dict(json.loads(json.dumps(good.to_dict()))) == good
+    for path in (None, "x", [[0.1, 0.1]], [[0, 0], [1, 1], [1, 0], [0, 1]], [[float("nan"), 0.2], [0.9, 0.9]], [[1], [2]]):
+        data = dict(good.to_dict(), path=path)
+        level = CustomLevel.from_dict(json.loads(json.dumps(data)))
+        assert level.shape in custom.SHAPES and level.path == []
+        level.line()

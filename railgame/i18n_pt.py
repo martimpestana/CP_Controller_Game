@@ -90,6 +90,22 @@ PT: dict[str, str] = {
     "River valley": "Vale de um rio",
     "Simple map": "Mapa simples",
     "River": "Rio",
+    "Drawn by hand": "Desenhada à mão",
+    "Draw by hand": "Desenhar à mão",
+    "Draw the line": "Desenha a linha",
+    "Hold the mouse button down and draw the line across the map, from the first station to the last.":
+        "Carrega no botão do rato e desenha a linha pelo mapa, da primeira estação até à última.",
+    "Draw here": "Desenha aqui",
+    "This is your line, with its stations. Draw again to change it.":
+        "Esta é a tua linha, com as estações. Desenha outra vez para a mudar.",
+    "Use this line": "Usar esta linha",
+    "Clear": "Limpar",
+    "Cancel": "Cancelar",
+    "Hold the mouse button down and draw the line.": "Carrega no botão do rato e desenha a linha.",
+    "The line is too short. Draw it across the map.": "A linha é curta demais. Desenha-a pelo mapa fora.",
+    "The line cannot cross itself.": "A linha não se pode cruzar com ela própria.",
+    "That bend is too sharp for a train. Draw wider curves.":
+        "Essa curva é apertada demais para um comboio. Desenha curvas mais largas.",
     "Fast trains: keep them off the slow tracks": "Comboios rápidos: mantém-nos fora das vias lentas",
     # Where each line goes, and its trains.
     "Faro to Tavira, along the Ria Formosa.": "De Faro a Tavira, ao longo da Ria Formosa.",
