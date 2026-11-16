@@ -197,19 +197,30 @@ says "delayed 3 min". Only the delay you add is counted, not the lateness a trai
 **Level editor** in the main menu opens **My levels**. A level of your own is a single-track
 line that you lay out, and the trains that run on it:
 
-- **The line.** Its shape on the map (gentle curve, straight, big bend, S-curve, south to
-  north) and its landscape (coast, plain, river valley, or a simple map). Two to seven stations:
-  for each one its name (click it and type), whether it is a crossing station (two tracks) or a
+- **The line.** Its shape on the map: one of the ready-made shapes (gentle curve, straight,
+  big bend, S-curve, south to north) or your own, drawn with the mouse (**Draw by hand**: hold
+  the button down and draw the line across the blank map; a line that crosses itself or bends
+  too sharply for a train is refused, with the reason). Its landscape (coast, plain, river valley, or a simple map). Two to seven
+  stations: for each one its name (click it and type), whether it is a crossing station (two tracks) or a
   halt, and the distance to the next station (3 to 30 km).
 - **The trains.** Up to twelve. For each one the kind (Regional, Inter-Regional, Intercidades,
   Alfa Pendular, freight, steam), which end of the line it comes from, and the time it enters
   the map. The timetable at each station is worked out from the distances, as in the game's own
   levels. You also choose the allowed average delay.
 
+- **A branch line** (optional, button **Branch line**). A second line that leaves the first
+  just past one of its crossing stations and runs off on its own, with one to three stations.
+  In the list of trains, click a train's route to send it along the branch: it then runs
+  between the first station of the line and the end of the branch. At the junction you set
+  the points for each train. The driver tells you which way he is going, and stops in front of
+  the points rather than take the wrong line. A level with a branch does not have the
+  "Line blocked" check: if you jam it, restart with R.
+
 **Save and play** tries the level at once (Esc comes back to the editor). Up to eight levels are
 kept in `.cp_controller_levels.json` in your home folder (in the browser: in the page's local
 storage), so they are still there next time. The code is in `railgame/custom.py` (what a level
-is and how it becomes a playable line) and `railgame/editor.py` (the two screens).
+is and how it becomes a playable line), `railgame/editor.py` (the screens), and for the branch
+`railgame/junction.py` (the rules) and `railgame/junctionrender.py` (the map).
 
 ## Project structure
 
@@ -232,6 +243,8 @@ is and how it becomes a playable line) and `railgame/editor.py` (the two screens
 | `railgame/skins.py`, `railgame/themes.py` | Train skins and map colours for the Customise menu |
 | `railgame/custom.py` | Levels made by the player: the line and trains they describe, saved to a file |
 | `railgame/editor.py` | The level editor and the list of the player's own levels |
+| `railgame/junction.py` | A custom line with a branch: the two lines joined into a network, and its timetables |
+| `railgame/junctionrender.py` | Draws a line with a branch: where the branch runs on the map, trains over the junction |
 | `railgame/minimap.py` | The small map of Portugal on each line's card in the main menu |
 | `railgame/assets/` | Game icon and the fonts used in the browser (Liberation Sans, SIL OFL) |
 | `webpage/` | Extras added to the browser page (full screen button) |

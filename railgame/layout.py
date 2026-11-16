@@ -18,10 +18,19 @@ def _lerp(a, b, t):
 
 
 class Layout:
-    def __init__(self, line: Line, rect: tuple[int, int, int, int], scale: float = 1.0):
+    def __init__(self, line: Line, rect: tuple[int, int, int, int] | None, scale: float = 1.0, path: list | None = None, lead: float = 0.0):
+        """With `path` (screen pixels, from the line's first end to its last) the line is drawn
+        along it as it is, and its stations are placed by their distances; `rect` is not used.
+        `lead` pixels more than usual are kept free before the first station box."""
         self.line = line
         self.zone_px = ZONE_PX * scale
         self.track_gap = TRACK_GAP * scale
+        self.lead_px = 0.0  # extra room kept free before the first station box
+        if path is not None:
+            self.path = list(path)
+            self.lead_px = lead
+            self._place_stations(None)
+            return
         left, top, width, height = rect
         geo = line.geo
         mean_lat = sum(lat for lat, _ in geo.shape) / len(geo.shape)
@@ -36,6 +45,10 @@ class Layout:
         ox = left + (width - (max(xs) - min(xs)) * sx) / 2
         oy = top + (height - (max(ys) - min(ys)) * sy) / 2
         self.path = [(ox + (x - min(xs)) * sx, oy + (y - min(ys)) * sy) for x, y in raw]
+        self._place_stations(geo.station_shape_index)
+
+    def _place_stations(self, shape_index: dict[str, int] | None) -> None:
+        line = self.line
         self.cum = [0.0]
         for a, b in zip(self.path, self.path[1:]):
             self.cum.append(self.cum[-1] + math.dist(a, b))
@@ -44,7 +57,12 @@ class Layout:
         anchors = [(line.west_edge, 0.0), (line.east_edge, self.cum[-1])]
         self.station_px: dict[str, float] = {}
         loops = sorted((st for st in line.stations if st.has_loop), key=lambda st: st.pos)
-        spread = self._spread_stations([self.cum[geo.station_shape_index[st.code]] for st in loops])
+        if shape_index is not None:
+            wanted = [self.cum[shape_index[st.code]] for st in loops]
+        else:
+            per_metre = self.cum[-1] / (line.east_edge - line.west_edge)
+            wanted = [(st.pos - line.west_edge) * per_metre for st in loops]
+        spread = self._spread_stations(wanted)
         for st, d in zip(loops, spread):
             self.station_px[st.code] = d
             anchors.append((st.pos - ZONE_HALF, d - self.zone_px))
@@ -64,7 +82,7 @@ class Layout:
                     d[i] -= short / 2
                     d[i + 1] += short / 2
                     moved = True
-            low, high = self.zone_px + ends, self.cum[-1] - self.zone_px - ends
+            low, high = self.zone_px + ends + self.lead_px, self.cum[-1] - self.zone_px - ends
             for i in range(len(d)):
                 clamped = max(low, min(high, d[i]))
                 moved |= abs(clamped - d[i]) > 0.5
