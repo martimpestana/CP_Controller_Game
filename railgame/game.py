@@ -167,9 +167,14 @@ class Game:
         if event.type == pygame.QUIT:
             self.running = False
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            before = self.scene
             self.click(event.pos)
+            if before == "draw" and self.scene == "draw" and not any(r.collidepoint(event.pos) for r, _ in self.buttons):
+                self.editor.draw_event(event)  # a press on the map starts the line
         elif self.scene == "editor" and event.type in (pygame.KEYDOWN, pygame.TEXTINPUT):
             self.editor.event(event)  # typing a name
+        elif self.scene == "draw" and event.type in (pygame.KEYDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+            self.editor.draw_event(event)  # drawing the line by hand
         elif event.type == pygame.KEYDOWN:
             self.key(event.key)
 
@@ -180,8 +185,8 @@ class Game:
             if key in (pygame.K_ESCAPE, pygame.K_RETURN):
                 self.scene = "menu"
             return
-        if self.scene == "editor":
-            return  # its keys go to the editor (see handle)
+        if self.scene in ("editor", "draw"):
+            return  # their keys go to the editor (see handle)
         if self.scene == "menu":
             lines = list(LEVELS)
             if key == pygame.K_ESCAPE and not IN_BROWSER:  # in the browser it would freeze the page
@@ -299,6 +304,7 @@ class Game:
             "customise": self.draw_customise,
             "mylevels": self.editor.draw_list,
             "editor": self.editor.draw,
+            "draw": self.editor.draw_canvas,
         }
         if self.scene in screens:
             screens[self.scene]()
