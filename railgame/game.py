@@ -531,6 +531,14 @@ class Game:
             a, b = sim.crash
             title, colour = "Accident!", RED
             detail = f"{a.name} and {b.name} collided. Never let two trains onto the same track."
+        elif getattr(sim, "gridlock", None):
+            title, colour = "Line blocked", RED
+            stuck = sim.gridlock
+            names = ", ".join(t.name for t in stuck) if len(stuck) <= 3 else f"{len(stuck)} trains"
+            detail = (
+                f"{names} can never move again: each one is waiting for another. "
+                "Keep a track free at every station for trains coming the other way."
+            )
         elif sim.passed:
             title, colour = "Level complete", GREEN
             detail = f"Average delay {minutes_text(sim.average_delay())}. Well done, controller."

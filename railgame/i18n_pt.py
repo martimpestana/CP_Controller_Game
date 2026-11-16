@@ -35,6 +35,7 @@ PT: dict[str, str] = {
     "Next level": "Nível seguinte",
     "Try again": "Tentar de novo",
     "Loading…": "A carregar…",
+    "Line blocked": "Linha bloqueada",
     "Click to choose. Your choice is saved for next time.":
         "Clica para escolher. A escolha fica guardada para a próxima vez.",
     "Map colours": "Cores do mapa",
@@ -351,6 +352,14 @@ PT_PATTERNS: list = [
     (r"Click points: white straight, yellow to track (\d+)", "Agulha: branco em frente, amarelo para a via {}"),
     (r"(.+) and (.+) collided\. Never let two trains onto the same track\.",
      "O {} e o {} colidiram. Nunca deixes dois comboios entrar na mesma via."),
+    (r"(\d+) trains can never move again: each one is waiting for another\. "
+     r"Keep a track free at every station for trains coming the other way\.",
+     "{} comboios já não se podem mexer: cada um está à espera de outro. "
+     "Deixa uma via livre em cada estação para os comboios que vêm em sentido contrário."),
+    (r"(.+) can never move again: each one is waiting for another\. "
+     r"Keep a track free at every station for trains coming the other way\.",
+     "{} já não se podem mexer: cada um está à espera de outro. "
+     "Deixa uma via livre em cada estação para os comboios que vêm em sentido contrário."),
     (r"Average delay ([\d.]+ min)\. Well done, controller\.",
      lambda m: f"Atraso médio {minutes(m)}. Muito bem, controlador."),
     (r"Average delay ([\d.]+ min), the limit is (\d+) min\. Try again\.",

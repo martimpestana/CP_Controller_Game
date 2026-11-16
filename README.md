@@ -92,6 +92,10 @@ vulnerabilities.
   can see which ones pushed the average up.
 - **Refused actions**: when the game refuses a click (for example points locked under a train),
   a red message at the top of the map says why.
+- **Line blocked**: on a single track a train cannot go back. If trains end up waiting for each
+  other in a circle (a station with both tracks taken and a train waiting outside at each end),
+  nobody can ever move again: after a minute the level ends with "Line blocked" and the names
+  of the trains that are stuck.
 
 Eastbound trains (blue) are planned on track 1 at crossing stations and westbound trains
 (orange) on track 2, so that they can cross. If that track is already taken, the driver asks

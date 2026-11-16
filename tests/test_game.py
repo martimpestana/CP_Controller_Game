@@ -148,3 +148,24 @@ def test_every_line_card_shows_where_the_line_is():
             assert 36.8 < lat < 42.3 and -9.7 < lon < -6.0
     game.scene = "menu"
     game.draw()
+
+
+def test_a_blocked_line_ends_the_level_with_its_own_result():
+    from railgame import i18n
+
+    pygame.init()
+    game = Game(pygame.display.set_mode((1280, 720)))
+    game.start_level(3, "algarve")
+    game.sim.gridlock = game.sim.trains[:2]  # as Simulation._check_gridlock leaves it
+    game.frame()
+    assert game.scene == "result" and not game.sim.passed
+    game.draw()  # "Line blocked", with the names of the trains
+    assert "next" not in {action for _, action in game.buttons}
+    text = "R 5701, R 5702 can never move again: each one is waiting for another. Keep a track free at every station for trains coming the other way."
+    i18n.set_language("pt")
+    try:
+        assert i18n.t(text).startswith("R 5701, R 5702 já não se podem mexer")
+        assert i18n.t(text.replace("R 5701, R 5702", "5 trains")).startswith("5 comboios já não")
+        assert i18n.t("Line blocked") == "Linha bloqueada"
+    finally:
+        i18n.set_language("en")
