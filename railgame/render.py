@@ -176,6 +176,12 @@ def map_is_ready(line_name: str) -> bool:
     return _background_key(line_name) in _background_cache
 
 
+def forget_map(line_name: str) -> None:
+    """Throw away the drawn maps of a line (a line from the level editor that was changed)."""
+    for key in [key for key in _background_cache if key[0] == line_name]:
+        del _background_cache[key]
+
+
 
 
 _grade_cache: dict = {}

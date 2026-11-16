@@ -65,6 +65,11 @@ vulnerabilities.
   on screen instead of being carried out.
 - The only file the game reads is its own settings file (chosen skins and theme). A missing or
   damaged file, or one with unknown or wrongly typed values, falls back to the defaults.
+- The level editor keeps the player's levels in a second file. It is read as data only (JSON,
+  never executed): every value is checked and put inside its limits when the file is loaded
+  (lengths of names, number of stations and trains, known kinds and shapes), so a damaged or
+  hand-edited file cannot break the game. Typed names are limited in length and to printable
+  characters.
 - Dependencies are few and pinned: pygame (and pytest for the tests), with exact versions in
   `pyproject.toml` and `uv.lock`. The browser build uses pygbag 0.9.3.
 
@@ -183,6 +188,25 @@ Level 9 on the Algarve, Oeste, Douro and Alentejo lines has the trains of level 
 them reach the map 1 to 5 minutes late, and never the same ones twice: the list of next trains
 says "delayed 3 min". Only the delay you add is counted, not the lateness a train brings with it.
 
+## Level editor: make your own level
+
+**Level editor** in the main menu opens **My levels**. A level of your own is a single-track
+line that you lay out, and the trains that run on it:
+
+- **The line.** Its shape on the map (gentle curve, straight, big bend, S-curve, south to
+  north) and its landscape (coast, plain, river valley, or a simple map). Two to seven stations:
+  for each one its name (click it and type), whether it is a crossing station (two tracks) or a
+  halt, and the distance to the next station (3 to 30 km).
+- **The trains.** Up to twelve. For each one the kind (Regional, Inter-Regional, Intercidades,
+  Alfa Pendular, freight, steam), which end of the line it comes from, and the time it enters
+  the map. The timetable at each station is worked out from the distances, as in the game's own
+  levels. You also choose the allowed average delay.
+
+**Save and play** tries the level at once (Esc comes back to the editor). Up to eight levels are
+kept in `.cp_controller_levels.json` in your home folder (in the browser: in the page's local
+storage), so they are still there next time. The code is in `railgame/custom.py` (what a level
+is and how it becomes a playable line) and `railgame/editor.py` (the two screens).
+
 ## Project structure
 
 | File | What it does |
@@ -202,6 +226,8 @@ says "delayed 3 min". Only the delay you add is counted, not the lateness a trai
 | `railgame/scenery_lines.py` | The storybook scenery of each line (towns, hills, vineyards, the sea) |
 | `railgame/scenery_alentejo.py` | The storybook plain of the Alentejo (wheat, cork oaks, storks, the Alvito reservoir) |
 | `railgame/skins.py`, `railgame/themes.py` | Train skins and map colours for the Customise menu |
+| `railgame/custom.py` | Levels made by the player: the line and trains they describe, saved to a file |
+| `railgame/editor.py` | The level editor and the list of the player's own levels |
 | `railgame/minimap.py` | The small map of Portugal on each line's card in the main menu |
 | `railgame/assets/` | Game icon and the fonts used in the browser (Liberation Sans, SIL OFL) |
 | `webpage/` | Extras added to the browser page (full screen button) |

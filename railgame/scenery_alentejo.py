@@ -261,7 +261,9 @@ def draw(self, surf, cells, rng, area, kind_at) -> None:
         return any(math.dist((x, y), (tx, ty)) < r * grow for _, tx, ty, r in towns)
 
     # The Alvito reservoir, on the far side of the line from the town.
-    alvito = next(s for s in line.stations if s.name == "Alvito")
+    # (On a line made in the level editor there is no Alvito: the middle crossing station gets it.)
+    loops = [s for s in line.stations if s.has_loop]
+    alvito = next((s for s in line.stations if s.name == "Alvito"), loops[len(loops) // 2])
     lake_c = lay.local(alvito, 0, -land_side * S(120))
     lake = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
     lake_noise = _Noise(S(26), random.Random("lake"))
