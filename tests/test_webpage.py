@@ -1,4 +1,4 @@
-"""The full screen button script is added to the page that pygbag builds."""
+"""The full screen button script and the game's icon are added to the page that pygbag builds."""
 
 import importlib.util
 from pathlib import Path
@@ -25,3 +25,17 @@ def test_a_page_without_a_body_stops_the_build(tmp_path):
     (tmp_path / "index.html").write_text("<html></html>")
     with pytest.raises(SystemExit):
         add_extras.add_extras(tmp_path)
+
+
+def test_the_page_has_the_same_icon_as_the_app(tmp_path):
+    (tmp_path / "index.html").write_text(
+        '<html><head><link rel="icon" type="image/png" href="https://cdn.example/favicon.png" sizes="16x16">'
+        "</head><body></body></html>"
+    )
+    add_extras.add_extras(tmp_path)
+    add_extras.add_extras(tmp_path)
+    html = (tmp_path / "index.html").read_text()
+    assert "cdn.example" not in html  # pygbag's icon is gone...
+    assert html.count('rel="icon"') == 1 and html.index("favicon.png") < html.index("</head>")
+    icon = Path(__file__).parent.parent / "railgame" / "assets" / "icon.png"
+    assert (tmp_path / "favicon.png").read_bytes() == icon.read_bytes()  # ...and the app's is there
