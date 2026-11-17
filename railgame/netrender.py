@@ -22,6 +22,8 @@ from railgame.train import Train
 from railgame.ui import S, SR
 
 RAMP = 90.0  # metres over which a track bends from one lane into the next at a set of points
+RAIL_SIZE = 0.9  # rails narrower than on a single line: the tracks lie 15 design pixels apart
+SIGNAL_SIZE = 0.65  # smaller signal heads than on a single line, drawn on their own track
 LABEL_GAP = 30  # design pixels from the outermost track to a train's label
 
 
@@ -177,7 +179,40 @@ class NetRenderer(Renderer):
     # ------------------------------------------------------------------ positions used for clicks
 
     def signal_position(self, signal: Signal) -> tuple[float, float]:
-        return self.layout.point(signal.pos, signal.track)
+        if not hasattr(self, "_signal_places"):
+            self._signal_places = self._place_signals()
+        return self._signal_places[signal.id]
+
+    def _place_signals(self) -> dict[str, tuple[float, float]]:
+        """Where each signal is drawn: on its own track, at the signal, or a little further back
+        (towards the coming train) when that spot would cover a set of points or another
+        signal. At Santa Apolonia the four platform signals and the points are only metres
+        apart, so without this they would be drawn on top of each other."""
+        lay, line = self.layout, self.sim.line
+        w, h = S(12 * SIGNAL_SIZE) + S(2), S(21 * SIGNAL_SIZE) + S(2)
+        taken = []
+        for p in line.points:
+            x, y = self.point_position(p)
+            taken.append(pygame.Rect(round(x - S(6.5)), round(y - S(6.5)), S(13), S(13)))
+        places = {}
+        for s in sorted(line.signals, key=lambda s: (s.pos, s.id)):
+            track = line.tracks[s.track]
+            place = lay.point(s.pos, s.track)
+            for back in range(0, 260, 10):  # metres
+                pos = s.pos - s.direction * back
+                if not track.start <= pos <= track.end:
+                    continue
+                x, y = lay.point(pos, s.track)
+                head = pygame.Rect(0, 0, w, h)
+                head.center = (round(x), round(y))
+                if not any(head.colliderect(other) for other in taken):
+                    place = (x, y)
+                    break
+            head = pygame.Rect(0, 0, w, h)
+            head.center = (round(place[0]), round(place[1]))
+            taken.append(head)
+            places[s.id] = place
+        return places
 
     def point_position(self, point: Switch) -> tuple[float, float]:
         return self.layout.point(point.pos, point.stem)
@@ -210,13 +245,8 @@ class NetRenderer(Renderer):
         else:
             self._plain_river(surf)
         self._draw_platforms(surf)
-        edge = R.SB_TRACK_EDGE if self.storybook else None
-        for t in line.tracks.values():
-            pts = lay.polyline(t.id)
-            if edge:
-                ui.thick_lines(surf, edge, pts, S(7))
-        for t in line.tracks.values():
-            ui.thick_lines(surf, R.TRACK, lay.polyline(t.id), S(3))
+        # Narrower rails than on a single line: here the tracks lie close side by side.
+        R.draw_rails(surf, [lay.polyline(t.id) for t in line.tracks.values()], RAIL_SIZE)
         for t in line.tracks.values():
             if not t.open_start and not t.open_end and t.start == line.west_edge:
                 # Buffer stops at the end of the terminus platforms.
@@ -292,6 +322,7 @@ class NetRenderer(Renderer):
             R.map_overlay(screen, self.grade)
         highlighted = self._highlighted_targets(hover)
         self._draw_points(screen, highlighted)
+        self._draw_station_marks(screen)  # under the trains
         self._draw_trains(screen)
         self._draw_signals(screen, highlighted)
         self._draw_stations(screen)
@@ -308,8 +339,7 @@ class NetRenderer(Renderer):
         for sw in self.sim.line.points:
             active = sw.track
             other = sw.straight if sw.diverging else sw.branch
-            ui.thick_lines(screen, R.TRACK_DIM, lay.leg(sw, other), S(3))
-            ui.thick_lines(screen, R.YELLOW if sw.diverging else R.WHITE, lay.leg(sw, active), S(3))
+            R.draw_point_legs(screen, lay.leg(sw, active), lay.leg(sw, other), sw.diverging, RAIL_SIZE)
         for sw in self.sim.line.points:
             x, y = self.point_position(sw)
             rect = pygame.Rect(0, 0, S(11), S(11))
@@ -322,8 +352,7 @@ class NetRenderer(Renderer):
     def _draw_signals(self, screen, highlighted) -> None:
         for s in self.sim.line.signals:
             x, y = self.signal_position(s)
-            ui.circle(screen, (8, 8, 8), (x, y), S(7))
-            ui.circle(screen, R.GREEN if s.green else R.RED, (x, y), S(5))
+            R.draw_signal(screen, x, y, s.green, size=SIGNAL_SIZE)
             if s.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[s.id])
 
@@ -431,11 +460,14 @@ class NetRenderer(Renderer):
         w, h = self.f_bold.size(st.name)
         return pygame.Rect(0, 0, w + S(8), h + S(4)).move(centre[0] - w / 2 - S(4), centre[1] - h / 2 - S(2))
 
+    def _draw_station_marks(self, screen) -> None:
+        for st in self.sim.line.stations:
+            dot, _ = self._station_place(st)
+            R.draw_station_dot(screen, *dot)
+
     def _draw_stations(self, screen) -> None:
         for st in self.sim.line.stations:
-            dot, centre = self._station_place(st)
-            ui.circle(screen, R.BG, dot, S(8))
-            ui.circle(screen, R.WHITE, dot, S(6))
+            _, centre = self._station_place(st)
             self._label(screen, st.name, centre)
 
     def _draw_next_trains(self, screen) -> None:
@@ -479,8 +511,8 @@ class NetRenderer(Renderer):
             cy = y + 32 + i * 24
             cx = PANEL_X + 30
             if kind == "signal":
-                ui.circle(screen, R.GREEN, (S(cx - 6), S(cy)), S(6))
-                ui.circle(screen, R.RED, (S(cx + 8), S(cy)), S(6))
+                R.draw_signal(screen, S(cx - 6), S(cy), False, size=0.7)  # red, then green
+                R.draw_signal(screen, S(cx + 6), S(cy), True, size=0.7)
             elif kind == "point":
                 pygame.draw.rect(screen, R.YELLOW, SR(cx - 6, cy - 6, 12, 12), border_radius=S(2))
             elif kind == "ring":

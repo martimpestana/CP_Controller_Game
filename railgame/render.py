@@ -303,6 +303,86 @@ def draw_language_button(screen, f, short: bool = False) -> pygame.Rect:
     screen.blit(text, text.get_rect(center=rect.center))
     return rect
 
+# ---------------------------------------------------------------------- rails, signals, stations
+
+RAIL_BED = (122, 114, 102)  # the ballast (stones) under the sleepers
+RAIL_SLEEPER = (96, 66, 42)
+RAIL_STEEL = (215, 218, 224)
+
+
+def _offset(points, d: float) -> list[tuple[float, float]]:
+    """The polyline moved d pixels to its side."""
+    out = []
+    for i, (x, y) in enumerate(points):
+        a, b = points[max(0, i - 1)], points[min(len(points) - 1, i + 1)]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(dx, dy) or 1.0
+        out.append((x - dy / length * d, y + dx / length * d))
+    return out
+
+
+def _every(points, step: float):
+    """(place, direction) every step pixels along the polyline."""
+    carry = 0.0
+    for a, b in zip(points, points[1:]):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        t = carry
+        while t < length:
+            yield (a[0] + dx * t / length, a[1] + dy * t / length), (dx / length, dy / length)
+            t += step
+        carry = t - length
+
+
+def draw_rails(surf, lines, size: float = 1.4, colour=lambda c: c) -> None:
+    """Railway track: a bed of stones, wooden sleepers across it and two steel rails. Each layer
+    is drawn for all the lines before the next one, so tracks that meet join cleanly. size 1 is
+    the narrower track of a busy station (Lisbon); colour grades the colours (gc) for what is
+    drawn on top of a finished map."""
+    lines = [pts for pts in lines if len(pts) > 1]
+    for pts in lines:
+        ui.thick_lines(surf, colour(RAIL_BED), pts, S(12 * size))
+    sleeper, half, width = colour(RAIL_SLEEPER), S(6 * size), max(1, round(S(2 * size ** 0.5)))
+    for pts in lines:
+        for (x, y), (ux, uy) in _every(pts, S(5 * size)):
+            pygame.draw.line(surf, sleeper, (x + uy * half, y - ux * half), (x - uy * half, y + ux * half), width)
+    steel = colour(RAIL_STEEL)
+    for pts in lines:
+        for side in (-1, 1):
+            ui.thick_lines(surf, steel, _offset(pts, side * S(2.6 * size)), max(1, S(1.4 * size)))
+
+
+def draw_signal(surf, x: float, y: float, green: bool, size: float = 1.0) -> None:
+    """A signal head: red lamp on top, green below; the one that is on is lit."""
+    head = pygame.Rect(0, 0, S(12 * size), S(21 * size))
+    head.center = (round(x), round(y))
+    pygame.draw.rect(surf, (12, 12, 14), head, border_radius=S(5 * size))
+    pygame.draw.rect(surf, (150, 150, 155), head, max(1, S(1)), border_radius=S(5 * size))
+    ui.circle(surf, (70, 25, 25) if green else RED, (x, y - S(5 * size)), S(3.6 * size))
+    ui.circle(surf, GREEN if green else (25, 60, 35), (x, y + S(5 * size)), S(3.6 * size))
+
+
+def draw_station_dot(surf, x: float, y: float, small: bool = False) -> None:
+    """Where a station is, as on a printed map: a white dot in a black ring."""
+    ui.circle(surf, (20, 20, 22), (x, y), S(5 if small else 8))
+    ui.circle(surf, (245, 245, 245), (x, y), S(2.5 if small else 4.5))
+
+
+def draw_point_legs(surf, active, other, diverging: bool, size: float = 1.4) -> None:
+    """The two short pieces of track after a set of points: the way they are set as rails, the
+    other way dimmed (and a yellow line over the rails when the points lead to track 2)."""
+    for a, b in zip(other, other[1:]):
+        ui.thick_line(surf, TRACK_DIM, a, b, S(3))
+    pts = [active[0]]
+    for a, b in zip(active, active[1:]):  # a few steps, so the sleepers follow the leg
+        pts += [(a[0] + (b[0] - a[0]) * k / 6, a[1] + (b[1] - a[1]) * k / 6) for k in range(1, 7)]
+    draw_rails(surf, [pts], size, gc)
+    if diverging:
+        ui.thick_lines(surf, YELLOW, pts, S(2))
+
+
 class Renderer:
     first_level = False  # level 1 of a line shows a few tips (set in draw)
     draw_loops = True  # False: the second tracks of the crossing stations are drawn by a subclass
@@ -427,15 +507,8 @@ class Renderer:
             self._draw_scenery(surf)
 
         # Track
-        if self.storybook:  # a brown bed under the rails, so the line stands out on the bright map
-            ui.thick_lines(surf, SB_TRACK_EDGE, lay.main_track(), S(8))
-            for st in line.stations:
-                if st.has_loop and self.draw_loops:
-                    ui.thick_lines(surf, SB_TRACK_EDGE, lay.loop_track(st), S(8))
-        ui.thick_lines(surf, TRACK, lay.main_track(), S(4))
-        for st in line.stations:
-            if st.has_loop and self.draw_loops:
-                ui.thick_lines(surf, TRACK, lay.loop_track(st), S(4))
+        loops = [lay.loop_track(st) for st in line.stations if st.has_loop and self.draw_loops]
+        draw_rails(surf, [lay.main_track()] + loops)
 
         # Where the line continues off the map
         geo = line.geo
@@ -985,8 +1058,9 @@ class Renderer:
         highlighted = self._highlighted_targets(hover)
         self._draw_points(screen, highlighted)
         self._draw_signals(screen, highlighted)
+        self._draw_station_marks(screen)  # under the trains, so a train is never hidden
         self._draw_trains(screen)
-        self._draw_stations(screen)
+        self._draw_stations(screen)  # the names, over everything on the map
         self._draw_train_labels(screen)
         self._draw_top_bar(screen, info, speed)
         self._draw_requests(screen, hover)
@@ -1097,8 +1171,7 @@ class Renderer:
             straight = [lay.point(p.pos), lay.point(inner, 1)]
             diverging = [lay.point(p.pos), lay.point(inner, 2)]
             active, other = (diverging, straight) if p.diverging else (straight, diverging)
-            ui.thick_line(screen, TRACK_DIM, other[0], other[1], S(4))
-            ui.thick_line(screen, YELLOW if p.diverging else WHITE, active[0], active[1], S(4))
+            draw_point_legs(screen, active, other, p.diverging)
             x, y = self.point_position(p)
             rect = pygame.Rect(0, 0, S(13), S(13))
             rect.center = (int(x), int(y))
@@ -1111,9 +1184,8 @@ class Renderer:
         for s in self.sim.line.signals:
             x, y = self.signal_position(s)
             base = self.layout.point(s.pos, s.track or 1)
-            ui.thick_line(screen, MUTED, base, (x, y), S(2))
-            ui.circle(screen, (8, 8, 8), (x, y), S(8))
-            ui.circle(screen, GREEN if s.green else RED, (x, y), S(6))
+            ui.thick_line(screen, (60, 60, 64), base, (x, y), S(2))  # the post
+            draw_signal(screen, x, y, s.green)
             if s.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[s.id])
 
@@ -1236,19 +1308,27 @@ class Renderer:
         self.train_boxes.append((box, train))
         self.train_boxes.append((body.inflate(S(10), S(10)), train))
 
+    def _draw_station_marks(self, screen) -> None:
+        """A dot between the two tracks of a crossing station; beside the track for a halt."""
+        for st in self.sim.line.stations:
+            lay = self._station_layout(st)
+            if st.has_loop:
+                draw_station_dot(screen, *lay.local(st, 0, self.gap / 2))
+            else:
+                x, y = lay.point(st.pos)
+                nx, ny = lay.normal(st.pos)
+                dot = (x + nx * S(10), y + ny * S(10))
+                ui.thick_line(screen, (20, 20, 22), (x, y), dot, S(3))
+                draw_station_dot(screen, *dot, small=True)
+
     def _draw_stations(self, screen) -> None:
         for st in self.sim.line.stations:
             lay = self._station_layout(st)
             if st.has_loop:
-                x, y = lay.local(st, 0, self.gap / 2)
-                ui.circle(screen, BG, (x, y), S(15))
-                ui.circle(screen, WHITE, (x, y), S(12))
                 label = self.f_bold.render(st.name, True, WHITE)
                 lx, ly = lay.local(st, 0, S(52))
             else:
                 x, y = lay.point(st.pos)
-                ui.circle(screen, BG, (x, y), S(9))
-                ui.circle(screen, WHITE, (x, y), S(6))
                 label = self.f_small.render(st.name, True, MAP_MUTED)
                 nx, ny = lay.normal(st.pos)
                 lx, ly = x + nx * S(24), y + ny * S(24)
@@ -1432,8 +1512,8 @@ class Renderer:
             cy = y + 32 + i * 24
             cx = PANEL_X + 30
             if kind == "signal":
-                ui.circle(screen, GREEN, (S(cx - 6), S(cy)), S(6))
-                ui.circle(screen, RED, (S(cx + 8), S(cy)), S(6))
+                draw_signal(screen, S(cx - 6), S(cy), False, size=0.7)  # red, then green
+                draw_signal(screen, S(cx + 6), S(cy), True, size=0.7)
             elif kind == "point":
                 pygame.draw.rect(screen, YELLOW, SR(cx - 6, cy - 6, 12, 12), border_radius=S(2))
             elif kind == "ring":

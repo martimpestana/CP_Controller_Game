@@ -143,3 +143,32 @@ def test_a_train_lost_at_the_buffer_stops_is_taken_away_with_a_penalty():
     train = sim.trains[0]
     assert train.state == "finished"
     assert train.final_delay >= LOST_PENALTY
+
+
+def test_lisbon_signals_cover_neither_points_nor_each_other():
+    """At Santa Apolonia the platform signals and the points are only metres apart: each signal
+    is drawn on its own track, moved back a little when needed, so every one can be seen and
+    clicked."""
+    import os
+
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    from railgame.netrender import SIGNAL_SIZE, NetRenderer
+    from railgame.ui import S
+
+    pygame.init()
+    pygame.display.set_mode((320, 180))
+    _, sim = build_level("lisboa", 1)
+    r = NetRenderer(sim)
+    w, h = S(12 * SIGNAL_SIZE), S(21 * SIGNAL_SIZE)
+    heads = []
+    for s in sim.line.signals:
+        x, y = r.signal_position(s)
+        heads.append(pygame.Rect(round(x - w / 2), round(y - h / 2), round(w), round(h)))
+        assert r.object_at((round(x), round(y))) is s  # a click on the signal finds it
+    for i, a in enumerate(heads):
+        assert a.collidelist(heads[i + 1:]) == -1
+        for p in sim.line.points:
+            px, py = r.point_position(p)
+            assert not a.colliderect(pygame.Rect(round(px - S(5.5)), round(py - S(5.5)), S(11), S(11)))
