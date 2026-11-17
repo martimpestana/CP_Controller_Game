@@ -1,8 +1,10 @@
-"""Drawing a line with a branch (junction.py), made in the level editor.
+"""Drawing a custom line with a second line or a second track (junction.py), from the editor.
 
 The main line is drawn exactly like any single line, with its landscape (render.Renderer does
-that). The branch is a second line laid over the same map: it leaves the main line at the
-junction points and runs off to the edge of the map, on the side away from the water.
+that). The other lines are laid over the same map: a branch leaves the main line at the
+junction points and runs off to the edge of the map, on the side away from the water; a
+crossing line does the same on both sides of its station; a separate line has a place of its
+own on the map. A double line gets its second track beside the first.
 """
 
 import math
@@ -11,12 +13,12 @@ import pygame
 
 from railgame import render as R
 from railgame import ui
-from railgame.junction import BRANCH, MAIN, JunctionNetwork
+from railgame.junction import MAIN_BACK, JunctionNetwork
 from railgame.layout import ZONE_PX, Layout
 from railgame.netrender import NetRenderer
 from railgame.netsim import NetSimulation
 from railgame.render import HEIGHT, PANEL_X, TOP_BAR, Renderer
-from railgame.track import LOOP_HALF, Signal
+from railgame.track import EAST, LOOP_HALF, Line, Signal
 from railgame.train import Train
 from railgame.ui import S
 
@@ -27,6 +29,7 @@ WALL_PX = 90  # the branch starts turning away this far from an edge of the map
 MAX_TURN = math.radians(5)  # how much the branch can turn in one step of its path (6 pixels)
 LEAD_PX = 70  # the first station box of the branch keeps this far from the junction (and its station)
 LEG_PX = 24  # length of the two short legs drawn at the junction points
+CROSSOVER_M = 150  # metres over which a train moves across to the other track at a crossover
 
 
 class _MainOnly:
@@ -43,16 +46,20 @@ def branch_length(side) -> float:
 
 
 def branch_path(
-    main: Layout, start_pos: float, water_side: int, length: float, scale: float = 1.0, wet=None
-) -> list[tuple[float, float]]:
+    main: Layout, start_pos: float, sides: tuple[int, ...], length: float, scale: float = 1.0, wet=None,
+    backwards: bool = False, avoid: list | None = None,
+) -> tuple[list[tuple[float, float]], int]:
     """Where the branch runs on the screen: `length` pixels of line from the junction points.
 
     The branch leaves the main line at a gentle angle, bends away from it and then keeps
     clear of the main line and of the edges of the map, turning along them when it must.
-    Several directions are tried, on the dry side of the line (either side when there is no
-    water); the one that stays furthest from the main line wins. `water_side` is 0 without
-    water, otherwise as in Geography. `wet(x, y)` says where there is water on the map (a
-    lake, a bend of the river), which the branch avoids when it can.
+    Several directions are tried, on the `sides` allowed (1: to the left of a train going up
+    the main line, -1: to its right); the one that stays furthest from the main line wins.
+    `wet(x, y)` says where there is water on the map (a lake, a bend of the river), which the
+    branch avoids when it can. With `backwards` the branch leaves towards the start of the main
+    line instead of its end. `avoid`: more points (another branch) to keep clear of.
+
+    Returns the path, from the junction outwards, and the side it went to.
     """
     k = scale
     x0, y0 = main.point(start_pos)
@@ -61,11 +68,14 @@ def branch_path(
     d = math.dist(behind, ahead) or 1.0
     ux, uy = (ahead[0] - behind[0]) / d, (ahead[1] - behind[1]) / d
     nx, ny = uy, -ux  # to the left of a train going up the line
+    if backwards:  # turned round: the same side of the line is now the other way
+        ux, uy, nx, ny = -ux, -uy, -nx, -ny
     left, top, right, bottom = 24 * k, (TOP_BAR + 34) * k, (PANEL_X - 24) * k, (HEIGHT - 24) * k
     step, reach = 6 * k, WALL_PX * k
-    samples = [main._path_at(i * 12 * k) for i in range(int(main.cum[-1] / (12 * k)) + 1)]
-    best, best_score = None, -math.inf
-    for side in ((1, -1) if water_side == 0 else (-water_side,)):
+    samples = [main._path_at(i * 12 * k) for i in range(int(main.cum[-1] / (12 * k)) + 1)] + list(avoid or [])
+    best, best_score, best_side = None, -math.inf, sides[0]
+    for wanted_side in sides:
+        side = -wanted_side if backwards else wanted_side
         # A sharper junction is only tried for when the gentle one has no room to turn.
         for first, final in [(FIRST_ANGLE, f) for f in (75, 55, 95, 115, 40, 135, 155)] + [(70, 95), (70, 130), (110, 130), (110, 160)]:
             pts, x, y, gone = [(x0, y0)], x0, y0, 0.0
@@ -106,32 +116,66 @@ def branch_path(
             if clear < CLEAR_PX * k:
                 score -= 2000 * k  # it runs into the main line again
             if score > best_score:
-                best, best_score = pts, score
-    return best
+                best, best_score, best_side = pts, score, wanted_side
+    return best, best_side
+
+
+def dry_sides(main: Line) -> tuple[int, ...]:
+    """The sides of the main line a second line may go to: away from the water, if any."""
+    geo = main.geo
+    return (1, -1) if geo.water == "none" else (-geo.water_side,)
+
+
+def make_layouts(net: JunctionNetwork, main_layout: Layout, k: float, wet=None) -> dict[int, Layout]:
+    """A Layout for every line of the network (keyed by id(line)), given the main line's."""
+    layouts = {id(net.main): main_layout}
+    sides = dry_sides(net.main)
+    if net.kind in ("branch", "cross"):
+        side = net.side
+        path, went = branch_path(main_layout, side.west_edge, sides, branch_length(side) * k, k, wet)
+        layouts[id(side)] = Layout(side, None, k, path=path, lead=LEAD_PX * k)
+        if net.kind == "cross":
+            west = net.west_side
+            # Without water the crossing line goes on across the main line, to its other side.
+            other = (-went,) if net.main.geo.water == "none" else sides
+            back, _ = branch_path(main_layout, west.east_edge, other, branch_length(west) * k, k, wet, backwards=True, avoid=path)
+            layouts[id(west)] = Layout(west, None, k, path=back[::-1], trail=LEAD_PX * k)
+    elif net.kind == "separate":
+        box = net.side.geo.map_box
+        layouts[id(net.side)] = Layout(net.side, tuple(v * k for v in box), k)
+    return layouts
 
 
 class JunctionLayout:
-    """The layouts of the main line and of the branch, used as one.
+    """The layouts of all the lines of the network, used as one.
 
     Like layout.Layout it turns metres into pixels, but a place is (metres, track id), with
     the track ids of the network. Where a caller only gives metres (code shared with the
     single lines), the layout in `focus` answers: set it to the line being drawn.
     """
 
-    def __init__(self, net: JunctionNetwork, main: Layout, side: Layout):
-        self.net, self.main, self.side = net, main, side
+    def __init__(self, net: JunctionNetwork, main: Layout):
+        self.net, self.main = net, main
+        self.layouts: dict[int, Layout] = {id(net.main): main}
         self.focus = main
         self.track_gap = main.track_gap
         self.zone_px = main.zone_px
 
+    def of_line(self, line) -> Layout:
+        return self.layouts[id(line)]
+
     def of_track(self, track) -> Layout:
-        return self.side if self.net.on_branch(track) else self.main
+        return self.of_line(self.net.line_of_track(track))
 
     def of_station(self, st) -> Layout:
-        return self.side if self.net.line_of(st) is self.net.side else self.main
+        return self.of_line(self.net.line_of(st))
 
     def point(self, pos: float, track=None) -> tuple[float, float]:
         if isinstance(track, str):
+            if track == MAIN_BACK:  # the second track of a double line, all the way beside the first
+                x, y = self.main.point(pos)
+                nx, ny = self.main.normal(pos)
+                return x + nx * self.track_gap, y + ny * self.track_gap
             return self.of_track(track).point(pos, 2 if self.net.is_loop(track) else 1)
         return self.focus.point(pos, track or 1)
 
@@ -148,15 +192,20 @@ class JunctionRenderer(Renderer):
         net = self.net
         box = net.main.geo.map_box or (40, TOP_BAR + 120, PANEL_X - 80, HEIGHT - TOP_BAR - 250)
         self.main_layout = Layout(net.main, tuple(S(v) for v in box), ui.scale())
-        self.side_layout = None  # made in _prepare_background, once the landscape is drawn
+        self.draw_loops = not net.double  # a double line draws its second track itself
         super().__init__(sim, train_skins)
 
-    def _make_layout(self):
-        return JunctionLayout(self.net, self.main_layout, None)
+    @property
+    def side_layout(self) -> Layout | None:
+        """The layout of the second line (None without one)."""
+        side = self.net.side
+        return self.layout.layouts.get(id(side)) if side is not None else None
 
-    def _place_branch(self, surf) -> Layout:
-        """Choose where the branch runs, keeping it out of the water drawn on the map."""
-        net, k = self.net, ui.scale()
+    def _make_layout(self):
+        return JunctionLayout(self.net, self.main_layout)
+
+    def _place_lines(self, surf) -> None:
+        """Choose where the other lines run, keeping them out of the water drawn on the map."""
         water = [R.gc(c) for c in (self.sea, R.SB_SEA, R.SB_SHALLOW, R.SB_RIVER)]
         width, height = surf.get_size()
 
@@ -166,9 +215,7 @@ class JunctionRenderer(Renderer):
             r, g, b = surf.get_at((int(x), int(y)))[:3]
             return any(abs(r - c[0]) + abs(g - c[1]) + abs(b - c[2]) < 36 for c in water)
 
-        side = 0 if net.main.geo.water == "none" else net.main.geo.water_side
-        path = branch_path(self.main_layout, net.side.west_edge, side, branch_length(net.side) * k, k, wet)
-        return Layout(net.side, None, k, path=path, lead=LEAD_PX * k)
+        self.layout.layouts = make_layouts(self.net, self.main_layout, ui.scale(), wet)
 
     # ------------------------------------------------------------------ background
 
@@ -180,11 +227,16 @@ class JunctionRenderer(Renderer):
             super()._prepare_background()
         finally:
             self.sim, self.layout = sim, lay
-        # ...and the branch on top of a copy of it.
+        # ...and the other lines on top of a copy of it.
         surf = self.background.copy()
-        self.side_layout = self.layout.side = self._place_branch(surf)
-        side, line = self.side_layout, self.net.side
-        tracks = [side.main_track()] + [side.loop_track(st) for st in line.stations if st.has_loop]
+        self._place_lines(surf)
+        tracks = []
+        for line in self.net.lines()[1:]:
+            lay = self.layout.of_line(line)
+            tracks += [lay.main_track()] + [lay.loop_track(st) for st in line.stations if st.has_loop]
+        if self.net.double:
+            main = self.net.main
+            tracks.append([self.layout.point(p, MAIN_BACK) for p in _steps(main.west_edge, main.east_edge, 25)])
         if self.storybook:
             for pts in tracks:
                 ui.thick_lines(surf, R.gc(R.SB_TRACK_EDGE), pts, S(8))
@@ -199,7 +251,8 @@ class JunctionRenderer(Renderer):
             return super().signal_position(signal)
         x, y = self.layout.point(signal.pos, signal.track)
         nx, ny = self.layout.normal(signal.pos, signal.track)
-        side = S(R.SIGNAL_SIDE) if self.net.is_loop(signal.track) else -S(R.SIGNAL_SIDE)
+        outer = self.net.is_loop(signal.track) or signal.track == MAIN_BACK
+        side = S(R.SIGNAL_SIDE) if outer else -S(R.SIGNAL_SIDE)
         return (x + nx * side, y + ny * side)
 
     def point_position(self, point) -> tuple[float, float]:
@@ -214,14 +267,20 @@ class JunctionRenderer(Renderer):
 
     def _legs(self, sw) -> tuple[list, list]:
         """The two short pieces of track after a set of points: (straight, diverging)."""
-        lay = self.layout
+        lay, net = self.layout, self.net
         here = lay.point(sw.pos, sw.stem)
-        if sw.branch != BRANCH:  # the points of a crossing station, as on a single line
+        if sw.id in net.crossovers:  # over to the other track of a double line
+            ahead = sw.pos + sw.facing * CROSSOVER_M
+            return [here, lay.point(ahead, sw.straight)], [here, lay.point(ahead, sw.branch)]
+        joined = net.line_of_track(sw.branch)
+        if joined is net.line_of_track(sw.stem):  # the points of a crossing station, as on a single line
             inner = sw.station.pos + sw.side * LOOP_HALF
             return [here, lay.point(inner, sw.straight)], [here, lay.point(inner, sw.branch)]
-        main, side = self.main_layout, self.side_layout
-        straight = main._path_at(main._metres_to_px(sw.pos) + S(LEG_PX))
-        return [here, straight], [here, side._path_at(S(LEG_PX))]
+        # Where two lines meet: along the main line, or along the other line.
+        main, other = self.main_layout, lay.of_line(joined)
+        along = main._metres_to_px(sw.pos) + sw.facing * S(LEG_PX)
+        leg = other._path_at(S(LEG_PX)) if sw.facing == EAST else other._path_at(other.cum[-1] - S(LEG_PX))
+        return [here, main._path_at(along)], [here, leg]
 
     def _draw_points(self, screen, highlighted) -> None:
         for sw in self.sim.line.points:
@@ -249,19 +308,31 @@ class JunctionRenderer(Renderer):
     def _walk_back(self, train: Train, px_dists: list[float]) -> list[tuple[float, float]]:
         """As on a single line, but each part of the train is on a named track of the network
         (the front may be on the branch while the rear is still on the main line)."""
-        sim, lay = self.sim, self.layout
-        prev = lay.point(train.pos, train.track)
+        prev = self._body_point(train, train.pos)
         done, metres = 0.0, 0.0
         out = []
         for want in px_dists:
             while done < want and metres < 6000:
                 metres += 5
                 pos = train.pos - train.direction * metres
-                cur = lay.point(pos, sim.track_at(train, pos))
+                cur = self._body_point(train, pos)
                 done += math.dist(prev, cur)
                 prev = cur
             out.append(prev)
         return out
+
+    def _body_point(self, train: Train, pos: float) -> tuple[float, float]:
+        """A point of the train's body. Over a crossover it slides across to the other track."""
+        lay = self.layout
+        track = self.sim.track_at(train, pos)
+        for sw, old, new in train.switches_used:
+            if new == track and sw.id in self.net.crossovers:
+                f = (pos - sw.pos) * sw.facing / CROSSOVER_M
+                if 0 <= f <= 1:
+                    (ax, ay), (bx, by) = lay.point(pos, old), lay.point(pos, new)
+                    f = f * f * (3 - 2 * f)
+                    return ax + (bx - ax) * f, ay + (by - ay) * f
+        return lay.point(pos, track)
 
     def _draw_train_labels(self, screen) -> None:
         taken = [self._station_box(st) for st in self.sim.line.stations] + self._control_boxes()
@@ -272,3 +343,11 @@ class JunctionRenderer(Renderer):
 
     _draw_next_trains = NetRenderer._draw_next_trains
     _draw_hover = NetRenderer._draw_hover
+
+
+def _steps(start: float, end: float, step: float) -> list[float]:
+    out, pos = [], start
+    while pos < end:
+        out.append(pos)
+        pos += step
+    return out + [end]

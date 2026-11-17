@@ -27,8 +27,9 @@ On a machine with no screen, set `SDL_VIDEODRIVER=dummy` and `SDL_AUDIODRIVER=du
   drawing only. They never change the state of the game.
 - `railgame/game.py`: the window, the menus and the input.
 - `railgame/custom.py`, `railgame/editor.py`: the level editor and the player's own levels.
-- `railgame/junction.py`, `railgame/junctionrender.py`: a custom level with a branch line. The
-  rules are a `Network` played by `NetSimulation`; the map is two `Layout`s (main line and branch).
+- `railgame/junction.py`, `railgame/junctionrender.py`: a custom level with a second line (branch,
+  crossing line or separate line) or double track. The rules are a `Network` played by
+  `NetSimulation`; the map is one `Layout` per line.
 - `railgame/i18n.py`, `railgame/i18n_pt.py`: texts are written in English in the code and
   translated when drawn. Every new text shown on screen needs its Portuguese in `i18n_pt.py`.
 

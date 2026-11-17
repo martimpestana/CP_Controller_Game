@@ -18,17 +18,19 @@ def _lerp(a, b, t):
 
 
 class Layout:
-    def __init__(self, line: Line, rect: tuple[int, int, int, int] | None, scale: float = 1.0, path: list | None = None, lead: float = 0.0):
+    def __init__(self, line: Line, rect: tuple[int, int, int, int] | None, scale: float = 1.0, path: list | None = None, lead: float = 0.0, trail: float = 0.0):
         """With `path` (screen pixels, from the line's first end to its last) the line is drawn
         along it as it is, and its stations are placed by their distances; `rect` is not used.
-        `lead` pixels more than usual are kept free before the first station box."""
+        `lead` pixels more than usual are kept free before the first station box, and `trail`
+        pixels after the last one."""
         self.line = line
         self.zone_px = ZONE_PX * scale
         self.track_gap = TRACK_GAP * scale
         self.lead_px = 0.0  # extra room kept free before the first station box
+        self.trail_px = 0.0  # ...and after the last one
         if path is not None:
             self.path = list(path)
-            self.lead_px = lead
+            self.lead_px, self.trail_px = lead, trail
             self._place_stations(None)
             return
         left, top, width, height = rect
@@ -82,7 +84,7 @@ class Layout:
                     d[i] -= short / 2
                     d[i + 1] += short / 2
                     moved = True
-            low, high = self.zone_px + ends + self.lead_px, self.cum[-1] - self.zone_px - ends
+            low, high = self.zone_px + ends + self.lead_px, self.cum[-1] - self.zone_px - ends - self.trail_px
             for i in range(len(d)):
                 clamped = max(low, min(high, d[i]))
                 moved |= abs(clamped - d[i]) > 0.5

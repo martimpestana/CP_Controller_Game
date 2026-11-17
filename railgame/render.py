@@ -305,6 +305,7 @@ def draw_language_button(screen, f, short: bool = False) -> pygame.Rect:
 
 class Renderer:
     first_level = False  # level 1 of a line shows a few tips (set in draw)
+    draw_loops = True  # False: the second tracks of the crossing stations are drawn by a subclass
 
     def __init__(self, sim: Simulation, train_skins: dict[str, str] | None = None):
         self.sim = sim
@@ -429,11 +430,11 @@ class Renderer:
         if self.storybook:  # a brown bed under the rails, so the line stands out on the bright map
             ui.thick_lines(surf, SB_TRACK_EDGE, lay.main_track(), S(8))
             for st in line.stations:
-                if st.has_loop:
+                if st.has_loop and self.draw_loops:
                     ui.thick_lines(surf, SB_TRACK_EDGE, lay.loop_track(st), S(8))
         ui.thick_lines(surf, TRACK, lay.main_track(), S(4))
         for st in line.stations:
-            if st.has_loop:
+            if st.has_loop and self.draw_loops:
                 ui.thick_lines(surf, TRACK, lay.loop_track(st), S(4))
 
         # Where the line continues off the map

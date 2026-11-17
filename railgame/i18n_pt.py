@@ -119,6 +119,44 @@ PT: dict[str, str] = {
     "with a branch": "com ramal",
     "The branch needs at least one station.": "O ramal precisa de pelo menos uma estação.",
     "The branch must leave from a crossing station.": "O ramal tem de sair de uma estação de cruzamento.",
+    # The second line and double track (level editor).
+    "Second line": "Segunda linha",
+    "Double track": "Via dupla",
+    "Kind": "Tipo",
+    "Branch": "Ramal",
+    "Crossing line": "Linha que cruza",
+    "Separate line": "Linha separada",
+    "+ Branch": "+ Ramal",
+    "+ Crossing line": "+ Linha que cruza",
+    "+ Separate line": "+ Linha separada",
+    "A line that leaves the first one just past one of its crossing stations.":
+        "Uma linha que sai da primeira logo a seguir a uma das suas estações de cruzamento.",
+    "A line that comes in from one side, runs through a crossing station of the first one and leaves on the other side.":
+        "Uma linha que entra por um lado, passa por uma estação de cruzamento da primeira e sai pelo outro lado.",
+    "A line of its own on the same map, which never meets the first one.":
+        "Uma linha só dela no mesmo mapa, que nunca se encontra com a primeira.",
+    "Add a second line to the level. Trains can then run on either line.":
+        "Junta uma segunda linha ao nível. Os comboios podem andar em qualquer uma das linhas.",
+    "Where two lines meet you set the points for each train: the driver tells you which way he is going. "
+    "For two tracks on the whole main line, use Double track in the editor.":
+        "Onde as linhas se encontram és tu que pões a agulha para cada comboio: o maquinista diz-te para onde vai. "
+        "Para ter duas vias na linha principal toda, usa Via dupla no editor.",
+    "Crosses at": "Cruza em",
+    "Before it": "Antes dela",
+    "Shared": "Partilhada",
+    "In the list of trains, click a train's route to send it along the second line. "
+    "The second line goes on off the map at its ends.":
+        "Na lista de comboios, clica no percurso de um comboio para o mandares pela segunda linha. "
+        "A segunda linha continua para fora do mapa nas pontas.",
+    "Remove the second line": "Remover a segunda linha",
+    "The map shows once the level has no problems.": "O mapa aparece quando o nível não tiver problemas.",
+    "The second line needs at least one station.": "A segunda linha precisa de pelo menos uma estação.",
+    "The second line must meet the first at a crossing station.":
+        "A segunda linha tem de se encontrar com a primeira numa estação de cruzamento.",
+    "With double track the second line can only be a separate line.":
+        "Com via dupla a segunda linha só pode ser uma linha separada.",
+    "double track": "via dupla",
+    "with a second line": "com segunda linha",
     "Clear": "Limpar",
     "Cancel": "Cancelar",
     "Hold the mouse button down and draw the line.": "Carrega no botão do rato e desenha a linha.",
@@ -323,6 +361,10 @@ TRACKS = {
     # A line with a branch, made in the level editor.
     "the main line": "linha principal",
     "the branch line": "linha do ramal",
+    "the eastbound track": "via sentido nascente",
+    "the westbound track": "via sentido poente",
+    "the crossing line": "linha que cruza",
+    "the second line": "segunda linha",
 }
 
 
@@ -368,8 +410,13 @@ PT_PATTERNS: list = [
     (r"(\d+) levels", "{} níveis"),
     (r"(\d+) stations \((\d+) crossing\)", "{} estações ({} de cruzamento)"),
     (r"(\d+) stations, (\d+) km\. Made in the level editor\.", "{} estações, {} km. Feito no editor de níveis."),
-    (r"(\d+) stations, (\d+) km and a branch\. Made in the level editor\.",
-     "{} estações, {} km e um ramal. Feito no editor de níveis."),
+    (r"(\d+) stations, (\d+) km(, double track)?( and a branch| and a crossing line| and a second line)?\. "
+     r"Made in the level editor\.",
+     lambda n, km, double, second: f"{n} estações, {km} km"
+     + (", via dupla" if double else "")
+     + {None: "", " and a branch": " e um ramal", " and a crossing line": " e uma linha que cruza",
+        " and a second line": " e uma segunda linha"}[second]
+     + ". Feito no editor de níveis."),
     (r"The list is full \((\d+) levels\)\. Delete one to make another\.",
      "A lista está cheia ({} níveis). Apaga um para fazeres outro."),
     (r"Trains: (.+)", lambda trains: f"Comboios: {i18n.t(trains, False)}"),
