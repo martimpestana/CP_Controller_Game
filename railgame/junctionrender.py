@@ -237,11 +237,7 @@ class JunctionRenderer(Renderer):
         if self.net.double:
             main = self.net.main
             tracks.append([self.layout.point(p, MAIN_BACK) for p in _steps(main.west_edge, main.east_edge, 25)])
-        if self.storybook:
-            for pts in tracks:
-                ui.thick_lines(surf, R.gc(R.SB_TRACK_EDGE), pts, S(8))
-        for pts in tracks:
-            ui.thick_lines(surf, R.gc(R.TRACK), pts, S(4))
+        R.draw_rails(surf, tracks, colour=R.gc)
         self.background = surf
 
     # ------------------------------------------------------------------ positions
@@ -286,8 +282,7 @@ class JunctionRenderer(Renderer):
         for sw in self.sim.line.points:
             straight, diverging = self._legs(sw)
             active, other = (diverging, straight) if sw.diverging else (straight, diverging)
-            ui.thick_line(screen, R.TRACK_DIM, other[0], other[1], S(4))
-            ui.thick_line(screen, R.YELLOW if sw.diverging else R.WHITE, active[0], active[1], S(4))
+            R.draw_point_legs(screen, active, other, sw.diverging)
             x, y = self.point_position(sw)
             rect = pygame.Rect(0, 0, S(13), S(13))
             rect.center = (int(x), int(y))
@@ -299,9 +294,8 @@ class JunctionRenderer(Renderer):
     def _draw_signals(self, screen, highlighted) -> None:
         for s in self.sim.line.signals:
             x, y = self.signal_position(s)
-            ui.thick_line(screen, R.MUTED, self.layout.point(s.pos, s.track), (x, y), S(2))
-            ui.circle(screen, (8, 8, 8), (x, y), S(8))
-            ui.circle(screen, R.GREEN if s.green else R.RED, (x, y), S(6))
+            ui.thick_line(screen, (60, 60, 64), self.layout.point(s.pos, s.track), (x, y), S(2))  # the post
+            R.draw_signal(screen, x, y, s.green)
             if s.id in highlighted:
                 self._pulse(screen, (x, y), highlighted[s.id])
 
