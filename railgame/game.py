@@ -34,6 +34,8 @@ from railgame.ui import (
     IN_BROWSER,
     S,
     SR,
+    circle,
+    ring,
     best_scale,
     make_dpi_aware,
     set_scale,
@@ -43,6 +45,16 @@ from railgame.ui import scale as ui_scale
 SPEED_KEYS = {pygame.K_1: 1, pygame.K_2: 5, pygame.K_3: 10, pygame.K_4: 20}
 DEFAULT_SPEED = 5
 BROWSER_SCALE = 1.5
+
+
+# Each line has a colour of its own in the menu: sand, green hills, port wine, the Tejo, wheat.
+LINE_COLOURS = {
+    "algarve": (240, 196, 90),
+    "oeste": (120, 196, 120),
+    "douro": (200, 96, 130),
+    "lisboa": (90, 160, 255),
+    "alentejo": (236, 150, 70),
+}
 
 
 class Game:
@@ -337,28 +349,38 @@ class Game:
     def draw_menu(self) -> None:
         s = self.screen
         s.fill(render.BG)
-        title = self.f_title.render("CP Controller", True, WHITE)
-        s.blit(title, (S(80), S(60)))
-        sub = self.f_text.render(
-            "You control the signals and points of a Portuguese railway line. Keep the trains "
-            "moving, keep them apart, keep them on time.",
-            True,
-            MUTED,
-        )
-        s.blit(sub, (S(80), S(118)))
-        s.blit(self.f_head.render("Choose a line", True, WHITE), (S(80), S(180)))
+        mouse = pygame.mouse.get_pos()
+        self._menu_header()
+        s.blit(self.f_head.render("Choose a line", True, WHITE), (S(80), S(150)))
         # The cards share the height left under the title, so more lines still fit.
-        y, gap = 220, 12
-        card = min(110, (HEIGHT - 20 - y - gap * (len(LEVELS) - 1)) // len(LEVELS))
+        y, gap = 186, 10
+        card = min(104, (HEIGHT - 18 - y - gap * (len(LEVELS) - 1)) // len(LEVELS))
         for i, (key, levels) in enumerate(LEVELS.items(), 1):
             rect = SR(80, y, 640, card)
-            hovered = rect.collidepoint(pygame.mouse.get_pos())
+            hovered = rect.collidepoint(mouse)
+            accent = LINE_COLOURS.get(key, BUTTON_ON)
             pygame.draw.rect(s, render.BUTTON if hovered else render.CARD, rect, border_radius=S(10))
+            # A band in the line's own colour down the left edge, and all round the card under the mouse.
+            band = pygame.Rect(rect.x, rect.y, S(8), rect.height)
+            pygame.draw.rect(s, accent, band, border_top_left_radius=S(10), border_bottom_left_radius=S(10))
+            if hovered:
+                pygame.draw.rect(s, accent, rect, max(1, S(2)), border_radius=S(10))
             where, trains = LINE_BLURBS.get(key, ("", ""))
-            s.blit(self.f_head.render(f"{i} · {LINE_NAMES[key]}", True, WHITE), (rect.x + S(20), rect.y + S(14)))
-            s.blit(self.f_text.render(where, True, MUTED), (rect.x + S(20), rect.y + S(46)))
-            if card >= 100:
-                s.blit(self.f_text.render(f"Trains: {trains}", True, TEXT), (rect.x + S(20), rect.y + S(74)))
+            badge = (rect.x + S(40), rect.y + S(27))
+            circle(s, accent, badge, S(15))
+            number = self.f_head.render(str(i), True, render.BG)
+            s.blit(number, number.get_rect(center=badge))
+            s.blit(self.f_head.render(LINE_NAMES[key], True, WHITE), (rect.x + S(66), rect.y + S(14)))
+            s.blit(self.f_text.render(where, True, MUTED), (rect.x + S(66), rect.y + S(42)))
+            # The kinds of train that run on it, as the coloured tags they wear on the map.
+            x = rect.x + S(66)
+            for name in trains.split(" · ") if card >= 88 else ():
+                tag = self.f_small.render(name, True, TEXT)
+                chip = pygame.Rect(x, rect.y + S(card - 28), tag.get_width() + S(16), S(20))
+                pygame.draw.rect(s, render.BG, chip, border_radius=S(10))
+                pygame.draw.rect(s, accent, chip, max(1, S(1)), border_radius=S(10))
+                s.blit(tag, tag.get_rect(center=chip.center))
+                x = chip.right + S(6)
             # Where the line is: a small map of Portugal on the right of the card.
             box = pygame.Rect(0, 0, S(card - 10) * 0.55, S(card - 10))
             box.midright = (rect.right - S(12), rect.centery)
@@ -368,27 +390,90 @@ class Game:
             self.buttons.append((rect, f"line:{key}"))
             y += card + gap
 
-        help_x = 780
-        s.blit(self.f_head.render("How it works", True, WHITE), (S(help_x), S(180)))
+        help_x = 770
+        panel = SR(help_x, 150, WIDTH - help_x - 40, HEIGHT - 150 - 142)
+        pygame.draw.rect(s, render.PANEL, panel, border_radius=S(12))
+        s.blit(self.f_head.render("How it works", True, WHITE), (panel.x + S(20), panel.y + S(14)))
         tips = [
-            "The line has a single track. Trains in opposite directions can only pass each "
-            "other at crossing stations (two tracks).",
-            "Drivers send you requests. Each one stays on screen until you do what it asks.",
-            "Click a signal to turn it green or red. It turns red again after a train passes.",
-            "Click a set of points to send trains to track 1 (straight) or track 2 (yellow).",
-            "Two trains on the same track = accident. Too much average delay = repeat the level.",
+            ("loop", "The line has a single track. Trains in opposite directions can only pass each "
+             "other at crossing stations (two tracks)."),
+            ("ring", "Drivers send you requests. Each one stays on screen until you do what it asks."),
+            ("signal", "Click a signal to turn it green or red. It turns red again after a train passes."),
+            ("point", "Click a set of points to send trains to track 1 (straight) or track 2 (yellow)."),
+            ("crash", "Two trains on the same track = accident. Too much average delay = repeat the level."),
         ]
-        y = 220
-        for tip in tips:
-            for line in self.renderer_wrap(tip, S(WIDTH - help_x - 50)):
-                s.blit(self.f_text.render(line, True, TEXT), (S(help_x), S(y)))
+        y = 150 + 56
+        for icon, tip in tips:
+            self._tip_icon(icon, (panel.x + S(34), S(y + 11)))
+            lines = self.renderer_wrap(tip, panel.width - S(84))
+            for line in lines:
+                s.blit(self.f_text.render(line, True, TEXT), (panel.x + S(62), S(y)))
                 y += 24
-            y += 24
+            y += 22
         # Under "How it works", so the list of lines has the whole left column.
-        self.button(SR(help_x, HEIGHT - 124, 320, 44), "Level editor", "mylevels", primary=True)
-        self.button(SR(help_x, HEIGHT - 70, 180, 44), "Customise", "customise")
-        if not IN_BROWSER:  # a web page is closed with the browser tab instead
-            self.button(SR(help_x + 200, HEIGHT - 70, 120, 44), "Quit", "quit")
+        wide = WIDTH - help_x - 40
+        self.button(SR(help_x, HEIGHT - 126, wide, 46), "Level editor", "mylevels", primary=True)
+        if IN_BROWSER:  # a web page is closed with the browser tab instead
+            self.button(SR(help_x, HEIGHT - 70, wide, 46), "Customise", "customise")
+        else:
+            self.button(SR(help_x, HEIGHT - 70, wide - 150, 46), "Customise", "customise")
+            self.button(SR(help_x + wide - 138, HEIGHT - 70, 138, 46), "Quit", "quit")
+
+    def _menu_header(self) -> None:
+        """The title, with a train (in the player's own skins) running along a track beside it."""
+        s = self.screen
+        title = self.f_title.render("CP Controller", True, WHITE)
+        s.blit(title, (S(80), S(34)))
+        pygame.draw.rect(s, render.YELLOW, SR(80, 88, 64, 4), border_radius=S(2))
+        sub = self.f_text.render(
+            "You control the signals and points of a Portuguese railway line. Keep the trains "
+            "moving, keep them apart, keep them on time.",
+            True,
+            MUTED,
+        )
+        s.blit(sub, (S(80), S(104)))
+        # The track: two rails on sleepers, from the title to the language button.
+        left, right, y = S(80) + title.get_width() + S(36), S(WIDTH - 220), S(64)
+        for x in range(left, right, S(14)):
+            pygame.draw.line(s, render.TRACK_DIM, (x, y - S(5)), (x, y + S(5)), max(1, S(3)))
+        for dy in (-3, 3):
+            pygame.draw.line(s, render.TRACK, (left - S(6), y + S(dy)), (right, y + S(dy)), max(1, S(1.5)))
+        # A signal at the end of it, and the train on its way there (it moves slowly back and forth).
+        circle(s, (8, 8, 8), (right + S(14), y), S(9))
+        circle(s, render.GREEN, (right + S(14), y), S(6))
+        t = pygame.time.get_ticks() / 1000
+        k = ui_scale()
+        for kind, front in (("AP", right - S(60)), ("R", left + (right - left) * 0.42)):
+            cars = skins.CARS.get(kind, 2)
+            skin = self.settings.skins.get(kind, "real")
+            x = front
+            for i in range(cars):
+                a, b = (x, y), (x - S(34), y)
+                if b[0] < left:
+                    break
+                skins.draw_car(s, a, b, kind, skin, render.EAST_COLOUR, i, cars, k * 1.25, t)
+                x -= S(38)
+
+    def _tip_icon(self, kind: str, centre: tuple[int, int]) -> None:
+        """A little picture of what a tip is about, as it looks on the map."""
+        s = self.screen
+        x, y = centre
+        if kind == "loop":  # a crossing station: the track with a second one beside it
+            pygame.draw.line(s, render.TRACK, (x - S(13), y + S(4)), (x + S(13), y + S(4)), max(1, S(2)))
+            pts = [(x - S(11), y + S(4)), (x - S(5), y - S(4)), (x + S(5), y - S(4)), (x + S(11), y + S(4))]
+            pygame.draw.lines(s, render.TRACK, False, pts, max(1, S(2)))
+        elif kind == "ring":
+            ring(s, render.EAST_COLOUR, (x, y), S(9), S(2))
+            circle(s, render.EAST_COLOUR, (x, y), S(3))
+        elif kind == "signal":
+            circle(s, render.GREEN, (x - S(7), y), S(6))
+            circle(s, render.RED, (x + S(7), y), S(6))
+        elif kind == "point":
+            pygame.draw.rect(s, render.YELLOW, pygame.Rect(x - S(7), y - S(7), S(14), S(14)), border_radius=S(3))
+        elif kind == "crash":
+            circle(s, render.RED, (x, y), S(10))
+            mark = self.f_head_small.render("!", True, WHITE)
+            s.blit(mark, mark.get_rect(center=(x, y)))
 
     def renderer_wrap(self, text: str, width: int) -> list[str]:
         """A sentence (in the chosen language) cut into lines that fit in width."""
