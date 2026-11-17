@@ -33,7 +33,7 @@ jobs:
           mkdir -p web/cp_controller
           cp -r main.py railgame web/cp_controller/
           cd web
-          pygbag --ume_block 0 --build cp_controller
+          pygbag --ume_block 0 --icon ../railgame/assets/icon.png --build cp_controller
           python ../webpage/add_extras.py cp_controller/build/web
           ls -la cp_controller/build/web
       - name: Keep the build as a download
