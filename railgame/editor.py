@@ -16,7 +16,7 @@ import pygame
 
 from railgame import custom, i18n, render, ui
 from railgame.custom import CustomBranch, CustomLevel, CustomStation, CustomTrain
-from railgame.junctionrender import LEAD_PX, branch_length, branch_path
+from railgame.junctionrender import make_layouts
 from railgame.layout import Layout
 from railgame.levels import clock
 from railgame.render import BUTTON_ON, EAST_COLOUR, GREEN, HEIGHT, MUTED, RED, TEXT, WEST_COLOUR, WHITE, WIDTH
@@ -135,15 +135,28 @@ class Editor:
             self.game.scene = "editor"
         elif what == "drawcancel":
             self.game.scene = "editor"
-        elif what == "branch":  # open the branch screen
+        elif what == "branch":  # open the second line's screen
             self.game.scene = "branch"
         elif what == "branchdone":
             self.game.scene = "editor"
-        elif what == "branchadd":
+        elif what == "branchadd":  # a new second line, of the kind on the button
             crossings = [i for i, st in enumerate(level.stations) if st.crossing]
-            # By default it leaves from a station in the middle of the line.
+            # By default it meets the main line at a station in the middle of it.
             start = crossings[len(crossings) // 2] if crossings else 0
-            level.branch = CustomBranch(start, 6, [CustomStation(self._new_name(), True, 8)])
+            kind = list(custom.SECOND_KINDS)[args[0] if args else 0]
+            level.branch = CustomBranch(start, 6, [CustomStation(self._new_name(), True, 8)], kind)
+            if kind != "branch":  # two stations: one each side of the shared one, or both ends of the line
+                level.branch.stations.append(CustomStation(self._new_name(), True, 8))
+                level.branch.before = 1 if kind == "cross" else 0
+        elif what == "bkind" and level.branch is not None:
+            branch = level.branch
+            branch.kind = _step(list(custom.SECOND_KINDS), branch.kind, args[0])
+            branch.before = len(branch.stations) // 2 if branch.kind == "cross" else 0
+        elif what == "before" and level.branch is not None:
+            branch = level.branch
+            branch.before = max(0, min(len(branch.stations), branch.before + args[0]))
+        elif what == "double":
+            level.double = not level.double
         elif what == "branchremove":
             level.branch = None
             for train in level.trains:
@@ -161,6 +174,8 @@ class Editor:
         elif what == "bdelstation" and level.branch is not None:
             if len(level.branch.stations) > 1:
                 del level.branch.stations[args[0]]
+                if args[0] < level.branch.before:
+                    level.branch.before -= 1
         elif what == "bcrossing" and level.branch is not None:
             st = level.branch.stations[args[0]]
             st.crossing = not st.crossing
@@ -346,6 +361,8 @@ class Editor:
         rings for crossing stations, dots for halts, each with its number from the list."""
         g, s, level = self.game, self.game.screen, self.level
         thick_lines(s, render.TRACK, path, S(3))
+        if level.double:  # the second track, beside the first
+            thick_lines(s, render.TRACK, [(x, y - S(6)) for x, y in path], S(3))
         total = level.length_km() + 2 * custom.EDGE_KM
         km = custom.EDGE_KM
         for i, st in enumerate(level.stations):
@@ -357,7 +374,7 @@ class Editor:
                 circle(s, WHITE, (x, y), S(4))
             number = g.f_small.render(str(i + 1), True, TEXT if st.crossing else MUTED)
             s.blit(number, number.get_rect(center=(x, y - S(18))))
-            if level.branch is not None and level.branch.junction == i:
+            if level.branch is not None and level.branch.kind != "separate" and level.branch.junction == i:
                 # The branch: a short line leaving just past this station (the map shows where it really runs).
                 a = path[min(len(path) - 1, round(km / total * (len(path) - 1)) + 2)]
                 b = (a[0] + S(26), a[1] - S(22))
@@ -368,91 +385,125 @@ class Editor:
     # ------------------------------------------------------------------ the branch screen
 
     def draw_branch(self) -> None:
-        """The branch: where it leaves the main line, and its own stations."""
+        """The second line: what kind it is, where it meets the main line, and its own stations."""
         g, s, level = self.game, self.game.screen, self.level
         s.fill(render.BG)
         mouse = pygame.mouse.get_pos()
         self.fields = []
-        s.blit(g.f_head.render("Branch line", True, WHITE), (S(LEFT), S(20)))
-        hint = "A second line that leaves the first one just past one of its crossing stations."
-        s.blit(g.f_small.render(hint, True, MUTED), (S(LEFT), S(58)))
+        s.blit(g.f_head.render("Second line", True, WHITE), (S(LEFT), S(20)))
         branch = level.branch
         if branch is None:
+            hint = "Add a second line to the level. Trains can then run on either line."
+            s.blit(g.f_small.render(hint, True, MUTED), (S(LEFT), S(58)))
+            y = 100
+            for i, (kind, (name, what)) in enumerate(custom.SECOND_KINDS.items()):
+                g.button(SR(LEFT, y, 300, 44), f"+ {name}", f"ed:branchadd:{i}", primary=i == 0)
+                for j, line in enumerate(g.renderer_wrap(what, S(560))):
+                    s.blit(g.f_small.render(line, True, TEXT), (S(LEFT + 320), S(y + 4 + j * 20)))
+                y += 74
             lines = g.renderer_wrap(
-                "Trains can run from the first station of the line to the end of the branch, and back. "
-                "At the junction you set the points for each train: the driver tells you which way he is going.",
+                "Where two lines meet you set the points for each train: the driver tells you which way he is going. "
+                "For two tracks on the whole main line, use Double track in the editor.",
                 S(600),
             )
             for i, line in enumerate(lines):
-                s.blit(g.f_text.render(line, True, TEXT), (S(LEFT), S(110 + i * 24)))
-            g.button(SR(LEFT, 220, 240, 44), "Add a branch", "ed:branchadd", primary=True)
+                s.blit(g.f_small.render(line, True, MUTED), (S(LEFT), S(y + 10 + i * 20)))
             g.button(SR(LEFT, HEIGHT - 64, 130, 44), "Back", "ed:branchdone")
             return
-        y = 100
+        y = 64
+        name, what = custom.SECOND_KINDS[branch.kind]
+        self._chooser(LEFT, y, 544, "Kind", name, "ed:bkind", mouse)
+        for j, line in enumerate(g.renderer_wrap(what, S(600))[:2]):
+            s.blit(g.f_small.render(line, True, MUTED), (S(LEFT), S(y + 40 + j * 18)))
+        y += 84
         junction = level.stations[branch.junction] if branch.junction < len(level.stations) else None
-        self._chooser(LEFT, y, 544, "Leaves from", junction.name if junction else "?", "ed:junction", mouse, as_typed=True)
-        y += 44
-        s.blit(g.f_small.render("Distance from there to the first station of the branch", True, MUTED), (S(LEFT), S(y + 7)))
-        self._button(SR(LEFT + 392, y, 32, 32), "−", "ed:bgap0:-1", mouse)
-        text = g.f_text.render(f"{branch.gap_km} km", True, TEXT)
-        s.blit(text, text.get_rect(center=(S(LEFT + 468), S(y + 16))))
-        self._button(SR(LEFT + 512, y, 32, 32), "+", "ed:bgap0:1", mouse)
-        y += 54
+        shared = junction.name if junction else "?"
+        if branch.kind == "branch":
+            self._chooser(LEFT, y, 544, "Leaves from", shared, "ed:junction", mouse, as_typed=True)
+            y += 44
+        elif branch.kind == "cross":
+            self._chooser(LEFT, y, 290, "Crosses at", shared, "ed:junction", mouse, as_typed=True)
+            self._chooser(LEFT + 310, y, 234, "Before it", str(branch.before), "ed:before", mouse)
+            y += 44
+        y += 8
         for x, label in ((LEFT + 30, "Station"), (LEFT + 262, "Type"), (LEFT + 392, "Distance to the next")):
             s.blit(g.f_small.render(label, True, MUTED), (S(x), S(y)))
         y += 22
-        last = len(branch.stations) - 1
-        for i, st in enumerate(branch.stations):
-            number = g.f_small.render(str(i + 1), True, MUTED)
+        rows = branch.ordered()
+        if branch.kind == "branch":
+            rows = [None] + rows  # the junction station first: the branch starts there
+        own = 0
+        for r, st in enumerate(rows):
+            more = r < len(rows) - 1  # a distance to the next station
+            if st is None:  # the station the lines share: named in the main line's list
+                box = SR(LEFT + 26, y, 226, 32)
+                pygame.draw.rect(s, render.CARD, box, border_radius=S(6))
+                label = g.f_text._font.render(shared, True, MUTED)
+                s.blit(label, (box.x + S(10), box.centery - label.get_height() // 2))
+                text = g.f_small.render("Shared", True, MUTED)
+                s.blit(text, text.get_rect(center=(S(LEFT + 321), S(y + 16))))
+                if more:
+                    self._gap(y, branch.gap_km, "ed:bgap0", mouse)
+                y += ROW
+                continue
+            i = own
+            own += 1
+            number = g.f_small.render(str(own), True, MUTED)
             s.blit(number, number.get_rect(center=(S(LEFT + 10), S(y + 16))))
             self._field(SR(LEFT + 26, y, 226, 32), ("bstation", i), st.name, g.f_text)
             self._button(
                 SR(LEFT + 260, y, 122, 32), "Crossing" if st.crossing else "Halt", f"ed:bcrossing:{i}", mouse,
                 colour=(46, 104, 70) if st.crossing else None,
             )
-            if i < last:
-                self._button(SR(LEFT + 392, y, 32, 32), "−", f"ed:bgap:{i}:-1", mouse)
-                text = g.f_text.render(f"{st.gap_km} km", True, TEXT)
-                s.blit(text, text.get_rect(center=(S(LEFT + 468), S(y + 16))))
-                self._button(SR(LEFT + 512, y, 32, 32), "+", f"ed:bgap:{i}:1", mouse)
+            if more:
+                self._gap(y, st.gap_km, f"ed:bgap:{i}", mouse)
             if len(branch.stations) > 1:
                 self._button(SR(LEFT + 568, y, 32, 32), "×", f"ed:bdelstation:{i}", mouse)
             y += ROW
         if len(branch.stations) < custom.MAX_BRANCH_STATIONS:
             self._button(SR(LEFT + 26, y, 170, 32), "+ Station", "ed:baddstation", mouse)
-        y += 60
+        y += 50
         lines = g.renderer_wrap(
-            "In the list of trains, click a train's route to send it along the branch. "
-            "The branch ends at its last station and goes on off the map.",
+            "In the list of trains, click a train's route to send it along the second line. "
+            "The second line goes on off the map at its ends.",
             S(600),
         )
         for i, line in enumerate(lines):
             s.blit(g.f_small.render(line, True, MUTED), (S(LEFT), S(y + i * 20)))
-        self._branch_map(SR(RIGHT + 30, 100, 540, 420))
+        self._branch_map(SR(RIGHT + 30, 64, 540, 470))
         g.button(SR(LEFT, HEIGHT - 64, 130, 44), "Done", "ed:branchdone", primary=True)
-        g.button(SR(LEFT + 146, HEIGHT - 64, 230, 44), "Remove the branch", "ed:branchremove")
-        problems = [p for p in level.problems() if "branch" in p or "station" in p.lower()]
+        g.button(SR(LEFT + 146, HEIGHT - 64, 270, 44), "Remove the second line", "ed:branchremove")
+        problems = level.problems()
         if problems:
-            s.blit(g.f_small.render(problems[0], True, RED), (S(LEFT + 400), S(HEIGHT - 50)))
+            for i, line in enumerate(g.renderer_wrap(problems[0], S(WIDTH - LEFT - 450))):
+                s.blit(g.f_small.render(line, True, RED), (S(LEFT + 436), S(HEIGHT - 58 + i * 18)))
+
+    def _gap(self, y, km, action, mouse) -> None:
+        """The distance to the next station, with − and + buttons."""
+        g = self.game
+        self._button(SR(LEFT + 392, y, 32, 32), "−", f"{action}:-1", mouse)
+        text = g.f_text.render(f"{km} km", True, TEXT)
+        g.screen.blit(text, text.get_rect(center=(S(LEFT + 468), S(y + 16))))
+        self._button(SR(LEFT + 512, y, 32, 32), "+", f"{action}:1", mouse)
 
     def _branch_map(self, box: pygame.Rect) -> None:
-        """A small map of the two lines, laid out as they will be in the game."""
+        """A small map of the lines, laid out as they will be in the game."""
         g, s, level = self.game, self.game.screen, self.level
         pygame.draw.rect(s, render.CARD, box, border_radius=S(10))
         if level.problems():
+            text = g.f_small.render("The map shows once the level has no problems.", True, MUTED)
+            s.blit(text, text.get_rect(center=box.center))
             return
         key = (level.map_key(), box.size)
         if self._map_cache[0] != key:  # worked out again only when the lines change
             k = box.width / S(render.PANEL_X)
-            main = level.line()
-            side = level.side_line(main)
+            net = level.network()
+            main = net.main
             map_box = main.geo.map_box or (40, render.TOP_BAR + 120, render.PANEL_X - 80, HEIGHT - render.TOP_BAR - 250)
-            lay = Layout(main, tuple(v * S(1) * k for v in map_box), ui.scale() * k)
-            water = 0 if main.geo.water == "none" else main.geo.water_side
             scale = ui.scale() * k
-            path = branch_path(lay, side.west_edge, water, branch_length(side) * scale, scale)
-            self._map_cache = (key, (lay, Layout(side, None, scale, path=path, lead=LEAD_PX * scale)))
-        top = box.y + (box.height - S(HEIGHT) * box.width / S(render.PANEL_X)) / 2
+            lay = Layout(main, tuple(v * S(1) * k for v in map_box), scale)
+            self._map_cache = (key, list(make_layouts(net, lay, scale).values()))
+        top = box.y + (box.height - S(HEIGHT) * box.width / S(render.PANEL_X)) / 2 - S(20)
         for lay in self._map_cache[1]:
             track = [(box.x + x, top + y) for x, y in lay.main_track()]
             thick_lines(s, render.TRACK, track, S(3))
@@ -486,7 +537,8 @@ class Editor:
             title = g.f_head._font.render(level.title, True, WHITE)  # as typed, never translated
             s.blit(title, (rect.x + S(20), rect.centery - title.get_height() // 2))
             crossings = sum(st.crossing for st in level.stations)
-            branch = " · with a branch" if level.branch is not None else ""
+            branch = " · double track" if level.double else ""
+            branch += " · with a second line" if level.branch is not None else ""
             meta = (
                 f"{len(level.stations)} stations ({crossings} crossing) · {level.length_km():.0f} km{branch} · "
                 f"{len(level.trains)} trains · limit {level.limit_min:.0f} min"
@@ -565,7 +617,7 @@ class Editor:
         for x, label in ((RIGHT, "Train"), (RIGHT + 168, "Route" if level.branch else "From"), (RIGHT + 372, "Enters the map at")):
             s.blit(g.f_small.render(label, True, MUTED), (S(x), S(y)))
         y += 22
-        first, final, branch_end = level.end_names()
+        first, final = level.stations[0].name, level.stations[-1].name
         for i, train in enumerate(level.trains):
             kind = TRAIN_TYPES[train.kind]
             colour = EAST_COLOUR if train.direction == EAST else WEST_COLOUR
@@ -573,9 +625,8 @@ class Editor:
             origin = first if train.direction == EAST else final
             arrow = "→" if train.direction == EAST else "←"
             route = f"{arrow} {_short(origin, 18)}"
-            if level.branch is not None:  # with a branch: where from and where to
-                far = branch_end if train.branch else final
-                ends = (first, far) if train.direction == EAST else (far, first)
+            if level.branch is not None:  # with a second line: where from and where to
+                ends = level.route_ends(train)
                 route = f"{_short(ends[0], 10)} → {_short(ends[1], 10)}"
             self._route_button(SR(RIGHT + 168, y, 196, 32), route, f"ed:direction:{i}", mouse, colour)
             self._button(SR(RIGHT + 372, y, 36, 32), "−5", f"ed:time:{i}:-5", mouse)
@@ -680,8 +731,12 @@ class Editor:
             pygame.mouse.get_pos(), on=level.shape == custom.DRAWN,
         )
         self._button(
-            pygame.Rect(box.right - S(162), box.y + S(52), S(150), S(34)), "Branch line", "ed:branch",
+            pygame.Rect(box.right - S(162), box.y + S(50), S(150), S(34)), "Second line", "ed:branch",
             pygame.mouse.get_pos(), on=level.branch is not None,
+        )
+        self._button(
+            pygame.Rect(box.right - S(162), box.y + S(90), S(150), S(34)), "Double track", "ed:double",
+            pygame.mouse.get_pos(), on=level.double,
         )
 
 

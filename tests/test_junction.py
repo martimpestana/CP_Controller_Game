@@ -226,12 +226,12 @@ def test_levels_saved_before_branches_existed_still_load():
 def test_what_is_wrong_with_a_branch():
     level = branch_level()
     level.branch.junction = 1  # Ponte is a halt
-    assert "The branch must leave from a crossing station." in level.problems()
+    assert "The second line must meet the first at a crossing station." in level.problems()
     level.branch.junction = 2
     level.branch.stations[0].name = "Ponte"
     assert "Two stations have the same name." in level.problems()
     level.branch.stations = []
-    assert "The branch needs at least one station." in level.problems()
+    assert "The second line needs at least one station." in level.problems()
 
 
 # ---------------------------------------------------------------------- the map
@@ -298,7 +298,7 @@ def test_adding_a_branch_in_the_editor():
     click(game, "ed:new")
     click(game, "ed:branch")
     assert game.scene == "branch" and game.editor.level.branch is None
-    click(game, "ed:branchadd")
+    click(game, "ed:branchadd:0")
     level = game.editor.level
     assert level.branch.junction == 2 and len(level.branch.stations) == 1  # from Monte Alto, in the middle
     click(game, "ed:junction:1")
@@ -317,8 +317,10 @@ def test_adding_a_branch_in_the_editor():
     assert [(st.name, st.crossing) for st in level.branch.stations][1] == ("Serra", False)
     assert level.branch.stations[0].gap_km == 7
     click(game, "ed:baddstation")
+    click(game, "ed:baddstation")
     game.draw()
-    assert "ed:baddstation" not in [a for _, a in game.buttons]  # three at most
+    assert "ed:baddstation" not in [a for _, a in game.buttons]  # four at most
+    click(game, "ed:bdelstation:3")
     click(game, "ed:bdelstation:2")
     press(game, pygame.K_ESCAPE)
     assert game.scene == "editor" and level.problems() == []
@@ -334,7 +336,7 @@ def test_sending_trains_along_the_branch_in_the_editor():
     click(game, "ed:direction:0")
     assert (first.direction, first.branch) == (EAST, False)  # without a branch: just there and back
     click(game, "ed:branch")
-    click(game, "ed:branchadd")
+    click(game, "ed:branchadd:0")
     click(game, "ed:branchdone")
     seen = []
     for _ in range(4):
@@ -362,7 +364,7 @@ def test_deleting_a_station_keeps_the_branch_on_its_station():
     click(game, "mylevels")
     click(game, "ed:new")
     click(game, "ed:branch")
-    click(game, "ed:branchadd")
+    click(game, "ed:branchadd:0")
     click(game, "ed:branchdone")
     level = game.editor.level
     assert level.stations[level.branch.junction].name == "Monte Alto"
@@ -371,5 +373,5 @@ def test_deleting_a_station_keeps_the_branch_on_its_station():
     click(game, "ed:delstation:2")  # Porto Belo, after it
     assert level.stations[level.branch.junction].name == "Monte Alto"
     click(game, "ed:crossing:1")  # Monte Alto becomes a halt: the level says what is wrong
-    assert "The branch must leave from a crossing station." in level.problems()
+    assert "The second line must meet the first at a crossing station." in level.problems()
     game.draw()

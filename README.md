@@ -208,18 +208,30 @@ line that you lay out, and the trains that run on it:
   the map. The timetable at each station is worked out from the distances, as in the game's own
   levels. You also choose the allowed average delay.
 
-- **A branch line** (optional, button **Branch line**). A second line that leaves the first
-  just past one of its crossing stations and runs off on its own, with one to three stations.
-  In the list of trains, click a train's route to send it along the branch: it then runs
-  between the first station of the line and the end of the branch. At the junction you set
-  the points for each train. The driver tells you which way he is going, and stops in front of
-  the points rather than take the wrong line. A level with a branch does not have the
-  "Line blocked" check: if you jam it, restart with R.
+- **A second line** (optional, button **Second line**). One of three kinds, each with one to
+  four stations of its own:
+  - a **branch**, which leaves the first line just past one of its crossing stations and runs
+    off the map;
+  - a **crossing line**, which comes in from one side, runs through one crossing station of the
+    first line (sharing its two tracks) and leaves on the other side; you choose how many of its
+    stations come before the shared one;
+  - a **separate line**, a line of its own on the same map that never meets the first.
+
+  In the list of trains, click a train's route to send it along the second line. Where two
+  lines meet you set the points for each train. The driver tells you which way he is going, and
+  stops in front of the points rather than take the wrong line.
+- **Double track** (optional, button **Double track**). The main line gets two tracks all the
+  way, one for each direction. At each crossing station there are crossovers, so a fast train
+  can pass a slow one standing at the platform. Double track goes with a separate line, but not
+  with a branch or a crossing line.
+
+A level with a second line or double track does not have the "Line blocked" check: if you jam
+it, restart with R.
 
 **Save and play** tries the level at once (Esc comes back to the editor). Up to eight levels are
 kept in `.cp_controller_levels.json` in your home folder (in the browser: in the page's local
 storage), so they are still there next time. The code is in `railgame/custom.py` (what a level
-is and how it becomes a playable line), `railgame/editor.py` (the screens), and for the branch
+is and how it becomes a playable line), `railgame/editor.py` (the screens), and for the second line and double track
 `railgame/junction.py` (the rules) and `railgame/junctionrender.py` (the map).
 
 ## Project structure
@@ -243,8 +255,8 @@ is and how it becomes a playable line), `railgame/editor.py` (the screens), and 
 | `railgame/skins.py`, `railgame/themes.py` | Train skins and map colours for the Customise menu |
 | `railgame/custom.py` | Levels made by the player: the line and trains they describe, saved to a file |
 | `railgame/editor.py` | The level editor and the list of the player's own levels |
-| `railgame/junction.py` | A custom line with a branch: the two lines joined into a network, and its timetables |
-| `railgame/junctionrender.py` | Draws a line with a branch: where the branch runs on the map, trains over the junction |
+| `railgame/junction.py` | A custom level with a second line or double track: the lines joined into a network, and its timetables |
+| `railgame/junctionrender.py` | Draws such a level: where the other lines run on the map, trains over junctions and crossovers |
 | `railgame/minimap.py` | The small map of Portugal on each line's card in the main menu |
 | `railgame/assets/` | Game icon and the fonts used in the browser (Liberation Sans, SIL OFL) |
 | `webpage/` | Extras added to the browser page (full screen button) |
