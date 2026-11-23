@@ -478,14 +478,20 @@ class NetRenderer(Renderer):
         done = sum(1 for t in self.sim.trains if t.state == "finished")
         text = self.f_small.render(f"Trains done {done}/{len(self.sim.trains)}", True, R.MUTED)
         screen.blit(text, (S(right) - text.get_width(), S(y + 2)))
-        waiting = sorted((t for t in self.sim.trains if t.state == "waiting"), key=lambda t: t.enter_time)
+        def due(t):  # what the controller knows: the planned time until the driver says otherwise
+            return t.enter_time if t.announced else t.planned_enter_time
+
+        waiting = sorted((t for t in self.sim.trains if t.state == "waiting"), key=due)
         y += 26
         if not waiting:
             screen.blit(self.f_small.render("No more trains to come.", True, R.MUTED), (S(x0), S(y)))
             return
         for train in waiting[:5]:
             colour = train_colour(train)
-            screen.blit(self.f_text.render(clock_text(train.enter_time), True, R.TEXT), (S(x0), S(y)))
+            late = train.brought_delay and train.announced
+            if y + (39 if late else 24) > HEIGHT - 140:  # keep clear of "How to play"
+                break
+            screen.blit(self.f_text.render(clock_text(due(train)), True, R.TEXT), (S(x0), S(y)))
             chip = SR(x0 + 56, y + 1, 30, 18)
             pygame.draw.rect(screen, colour, chip, border_radius=S(4))
             text = self.f_bold.render(train_kind(train), True, R.BG)
@@ -493,9 +499,13 @@ class NetRenderer(Renderer):
             screen.blit(self.f_text.render(train.name.split()[-1], True, R.TEXT), (S(x0 + 92), S(y)))
             side = f"to {train.destination}"
             screen.blit(self.f_small.render(side, True, R.MUTED), (S(x0 + 150), S(y + 2)))
-            minutes = (train.enter_time - self.sim.time) / 60
+            minutes = (due(train) - self.sim.time) / 60
             when = self.f_bold.render("now" if minutes < 0.5 else f"{minutes:.0f} min", True, R.YELLOW if minutes < 3 else R.TEXT)
             screen.blit(when, (S(right) - when.get_width(), S(y)))
+            if late:  # level 9: it reaches the map late (not your fault), and has said so
+                tag = self.f_small.render(f"delayed {train.brought_delay / 60:.0f} min", True, R.ORANGE_LATE)
+                screen.blit(tag, (S(x0 + 150), S(y + 19)))
+                y += 15
             y += 24
 
     def _draw_legend(self, screen) -> None:

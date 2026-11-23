@@ -172,3 +172,41 @@ def test_lisbon_signals_cover_neither_points_nor_each_other():
         for p in sim.line.points:
             px, py = r.point_position(p)
             assert not a.colliderect(pygame.Rect(round(px - S(5.5)), round(py - S(5.5)), S(11), S(11)))
+
+
+# ---------------------------------------------------------------------- level 9: random delays
+
+
+def test_only_trains_from_outside_the_map_run_late_on_lisbon_level_nine():
+    for seed in range(12):
+        _, sim = build_level("lisboa", 9, seed=seed)
+        for train in sim.trains:
+            if train.direction == EAST:  # departures from Santa Apolónia: already at their platform
+                assert train.brought_delay == 0
+        assert any(t.brought_delay for t in sim.trains)
+
+
+def test_a_late_train_on_lisbon_says_so_and_its_own_lateness_is_not_counted():
+    from railgame.simulation import ANNOUNCE_BEFORE
+
+    _, sim = build_level("lisboa", 9, seed=3)
+    late = next(t for t in sim.trains if t.brought_delay)
+    assert not late.announced
+    run(sim, int(late.planned_enter_time - ANNOUNCE_BEFORE - sim.time) - 5, player=False)
+    assert not late.announced and not sim.notices
+    run(sim, 10, player=False)
+    assert late.announced
+    assert any(n.train is late and "min late" in n.text for n in sim.notices)
+    _, sim = build_level("lisboa", 9, seed=3)
+    run(sim, 3 * 3600)
+    assert sim.crash is None and sim.finished
+    late = next(t for t in sim.trains if t.brought_delay)
+    assert late.final_delay < late.brought_delay + 60  # what it brought is left out
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_careful_player_passes_lisbon_level_nine_whatever_the_delays(seed):
+    _, sim = build_level("lisboa", 9, seed=seed)
+    run(sim, 3 * 3600)
+    assert sim.crash is None
+    assert sim.passed

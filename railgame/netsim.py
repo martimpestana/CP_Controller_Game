@@ -17,7 +17,19 @@ import math
 from dataclasses import dataclass
 
 from railgame.network import Network, Switch
-from railgame.simulation import LOOKAHEAD, POINT_LOCK, REQUEST_DISTANCE, SIGNAL_MARGIN, STEP, STOP_TOLERANCE, Blocker, Request
+from railgame.simulation import (
+    ANNOUNCE_BEFORE,
+    LOOKAHEAD,
+    POINT_LOCK,
+    REQUEST_DISTANCE,
+    SIGNAL_MARGIN,
+    STEP,
+    STOP_TOLERANCE,
+    Blocker,
+    Notice,
+    Request,
+    _clock,
+)
 from railgame.track import EAST, Signal, Station
 from railgame.train import MIN_DWELL, Stop, Train
 
@@ -47,6 +59,7 @@ class NetSimulation:
         self.time = start_time
         self.max_average_delay = max_average_delay
         self.requests: dict[tuple, Request] = {}
+        self.notices: list[Notice] = []  # drivers' messages that need no action, newest last
         self.crash: tuple[Train, Train] | None = None
 
     # ------------------------------------------------------------------ state
@@ -319,11 +332,21 @@ class NetSimulation:
         self.time += dt
         for train in self.trains:
             if train.state == "waiting":
+                self._announce_delay(train)
                 self._try_to_enter(train)
             elif train.state == "running":
                 self._move(train, dt)
         self._check_collisions()
         self._update_requests()
+
+    def _announce_delay(self, train: Train) -> None:
+        """A train that will reach the map late (level 9) says so a little before it was due,
+        as on the single-track lines (Simulation._announce_delay)."""
+        if train.announced or self.time < train.planned_enter_time - ANNOUNCE_BEFORE:
+            return
+        train.announced = True
+        minutes = round(train.brought_delay / 60)
+        self.notices.append(Notice(train, f"Running {minutes} min late. We'll reach the map at {_clock(train.enter_time)}.", self.time))
 
     def _track_free(self, track: str, low: float, high: float) -> bool:
         for other in self.running_trains:
@@ -441,7 +464,7 @@ class NetSimulation:
     def _record_departure(self, train: Train, stop: Stop) -> None:
         stop.departed_at = self.time
         if stop is train.stops[-1]:
-            train.final_delay = max(0.0, stop.departed_at - stop.depart)
+            train.final_delay = max(0.0, stop.departed_at - stop.depart - train.brought_delay)
 
     def _dwell(self, train: Train, stop: Stop) -> None:
         train.speed = 0.0
@@ -452,7 +475,7 @@ class NetSimulation:
         if terminus:
             # The end of the journey: the delay is how late it arrived. Then it goes away.
             if train.final_delay is None:
-                train.final_delay = max(0.0, train.stopped_since - stop.arrive)
+                train.final_delay = max(0.0, train.stopped_since - stop.arrive - train.brought_delay)
             if self.time >= train.stopped_since + TERMINUS_TURNAROUND:
                 stop.served = True
                 stop.departed_at = self.time
