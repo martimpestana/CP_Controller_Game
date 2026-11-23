@@ -3,8 +3,16 @@
 // only allows full screen straight from a real click or key press.
 (function () {
   // Smooth scaling: pygbag stretches the canvas with "pixelated" scaling, which makes text jagged.
+  // Shape: when the page opens, pygbag can size the canvas before the game has set its window,
+  // squeezing the 16:9 picture (narrow letters). Keep it 16:9, as big as fits, centred.
+  // (Clicks still land in the right place: the browser maps them through the canvas's real size.)
   const style = document.createElement("style");
-  style.textContent = "canvas { image-rendering: auto !important; }";
+  style.textContent = "canvas { image-rendering: auto !important; }\n"
+    + "#canvas, canvas.emscripten {"
+    + " position: fixed !important; left: 50% !important; top: 50% !important; margin: 0 !important;"
+    + " transform: translate(-50%, -50%) !important;"
+    + " width: min(100vw, calc(100vh * 16 / 9)) !important;"
+    + " height: min(100vh, calc(100vw * 9 / 16)) !important; }";
   document.head.appendChild(style);
 
   // Full screen button (bottom right) and the F key.

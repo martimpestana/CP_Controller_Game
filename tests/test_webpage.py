@@ -39,3 +39,12 @@ def test_the_page_has_the_same_icon_as_the_app(tmp_path):
     assert html.count('rel="icon"') == 1 and html.index("favicon.png") < html.index("</head>")
     icon = Path(__file__).parent.parent / "railgame" / "assets" / "icon.png"
     assert (tmp_path / "favicon.png").read_bytes() == icon.read_bytes()  # ...and the app's is there
+
+
+def test_the_page_keeps_the_game_16_by_9():
+    """pygbag can size the canvas before the game sets its window, squeezing the picture."""
+    from railgame.render import HEIGHT, WIDTH
+
+    js = (Path(__file__).parent.parent / "webpage" / "page_extras.js").read_text(encoding="utf-8")
+    assert WIDTH * 9 == HEIGHT * 16  # the rule below is written for a 16:9 game
+    assert "calc(100vh * 16 / 9)" in js and "calc(100vw * 9 / 16)" in js
