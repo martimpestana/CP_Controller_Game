@@ -589,6 +589,24 @@ LEVELS: dict[str, list[LevelInfo]] = {
             ],
             line="lisboa",
         ),
+        LevelInfo(
+            9,
+            "Running late",
+            "Level 7's trains, but some reach the map late, and never the same ones twice. Their own lateness is not counted, only the delay you add.",
+            "06:56",
+            4,
+            [
+                TrainPlan("R 16041", EAST, "07:00"),
+                TrainPlan("R 16042", WEST, "06:59"),
+                TrainPlan("AP 127", WEST, "07:00"),
+                TrainPlan("IC 524", WEST, "07:02"),
+                TrainPlan("R 16044", WEST, "07:04"),
+                TrainPlan("AP 128", EAST, "07:05"),
+                TrainPlan("R 16043", EAST, "07:08"),
+            ],
+            line="lisboa",
+            random_delays=True,
+        ),
     ],
     "alentejo": [
         LevelInfo(
@@ -859,12 +877,22 @@ def build_level(line_key: str, number: int, seed: int | None = None) -> tuple[Le
     line = LINES[info.line]()
     if isinstance(line, Network):
         trains = [make_net_timetable(line, plan) for plan in info.trains]
+        if info.random_delays:
+            # Only trains that come in from outside the map can be late: a departure from the
+            # terminus (Santa Apolónia) is already standing at its platform.
+            incoming = [t for t in trains if not _starts_at_terminus(line, t)]
+            random_delays(incoming, random.Random(seed))
         return info, NetSimulation(line, trains, clock(info.start), info.max_average_delay_min * 60)
     trains = [make_timetable(line, plan) for plan in info.trains]
     if info.random_delays:
         random_delays(trains, random.Random(seed))
     sim = Simulation(line, trains, clock(info.start), info.max_average_delay_min * 60)
     return info, sim
+
+
+def _starts_at_terminus(line: Network, train: Train) -> bool:
+    first = train.stops[0] if train.stops else None
+    return bool(first and line.terminus and first.station.code == line.terminus and train.direction == EAST)
 
 
 def random_delays(trains: list[Train], rng: random.Random) -> None:

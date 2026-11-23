@@ -179,6 +179,7 @@ the start.
 | 6 | Freight to Alcântara | 6 | 3 min |
 | 7 | Full house | 7 | 4 min |
 | 8 | Morning rush | 11 | 4 min |
+| 9 | Running late (random delays) | 7 | 4 min |
 
 ### Linha do Alentejo
 
@@ -197,7 +198,7 @@ single track with nowhere to cross, so where two trains meet matters more than o
 | 8 | Feira de Beja | 8 | 8 min |
 | 9 | Running late (random delays) | 7 | 6 min |
 
-Level 9 on the Algarve, Oeste, Douro and Alentejo lines has the trains of level 7, but some of
+Level 9 on every line has the trains of level 7, but some of
 them reach the map 1 to 5 minutes late, and never the same ones twice: the list of next trains
 says "delayed 3 min". Only the delay you add is counted, not the lateness a train brings with it.
 

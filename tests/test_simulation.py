@@ -370,9 +370,10 @@ def test_new_train_waits_while_the_first_station_is_full():
 # ---------------------------------------------------------------------- random delays (level 9)
 
 RANDOM_LINES = ["algarve", "oeste", "douro", "alentejo"]
+ALL_LINES = RANDOM_LINES + ["lisboa"]  # Lisbon: a network, played in netsim.py
 
 
-@pytest.mark.parametrize("line", RANDOM_LINES)
+@pytest.mark.parametrize("line", ALL_LINES)
 def test_level_nine_has_random_delays_and_the_others_do_not(line):
     from railgame.levels import LEVELS
 
@@ -385,7 +386,7 @@ def test_level_nine_has_random_delays_and_the_others_do_not(line):
         assert all(t.brought_delay == 0 for t in sim.trains)
 
 
-@pytest.mark.parametrize("line", RANDOM_LINES)
+@pytest.mark.parametrize("line", ALL_LINES)
 def test_random_delays_change_from_one_game_to_the_next(line):
     seen = set()
     for seed in range(12):
