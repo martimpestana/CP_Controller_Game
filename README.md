@@ -20,7 +20,16 @@ danger is a crossover set the wrong way, or a fast train stuck behind a regional
 | José Campos | 75552 |
 | Nehir Sarikaya | 78055 |
 
-## How to run
+## Objectives
+
+- **The game:** get every train through the level on time, with the average delay under the
+  level's limit and without ever letting two trains onto the same track.
+- **The project:** build a complete, tested game that runs in the browser and on the desktop
+  from the same Python code. The rules (`simulation.py`, `netsim.py`) are kept apart from the
+  drawing, so they can be tested without a screen. Real Portuguese lines are modelled at
+  increasing difficulty, with a level editor so players can make their own.
+
+## Installation and how to run
 
 You need [uv](https://docs.astral.sh/uv/). It installs Python 3.12 and pygame for you.
 
